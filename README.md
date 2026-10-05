@@ -93,8 +93,8 @@ cd electron && npm install && npm start
 ### 4) 验证
 
 ```bash
-blackwarrior selftest        # 包级自检
-python tests/test_server.py  # HTTP/SSE/UI 端到端（19 项）
+blackwarrior selftest        # 包级自检（18 项）
+python tests/test_server.py  # HTTP/SSE/UI 端到端 + 前端静态一致性（28 项）
 ```
 
 ## UI 一览
@@ -103,7 +103,19 @@ python tests/test_server.py  # HTTP/SSE/UI 端到端（19 项）
 - **记忆库**：力导向记忆图谱（按保留度着色）、语义检索、一键睡眠巩固；
 - **认知内核**（独有）：情绪曲线、预测误差仪表、好奇心、焦点栈、内核快照 JSON；
 - **活动**：工具注册表（风险着色）、行动日志、实时事件流；
-- **设置**：12 家供应商、人格、心跳、能力开关，密钥脱敏回显。
+- **设置**：12 家供应商、人格、心跳、能力开关、语音开关，密钥脱敏回显。
+
+## 语音
+
+走浏览器内置 Web Speech API，**零额外依赖**：
+
+| 能力 | 实现 | 可用性 |
+|---|---|---|
+| 朗读回复（TTS） | `speechSynthesis` | **完全本地、离线可用**，浏览器与桌面壳均支持 |
+| 语音输入（ASR） | `SpeechRecognition` | Chromium 走云端识别；**Electron 内置的 Chromium 不带该服务 API key，桌面壳里基本不可用**（按钮自动置灰），在 Chrome / Edge 打开可用 |
+
+要在桌面壳内做真语音输入，需换本地 ASR（whisper.cpp / faster-whisper 之类），
+当前版本不引入——能力缺失时一律显式降级并说明原因，绝不静默失效。
 
 ## 安全模型
 
@@ -127,7 +139,7 @@ BlackWarrior/
 
 ## Roadmap
 
-- [ ] v0.2：语音输入（edge-tts 反向）、微信/钉钉渠道接入
+- [ ] v0.2：桌面壳内本地 ASR（whisper.cpp）、微信/钉钉渠道接入
 - [ ] v0.3：技能市场（pasm-skills 生态互通）、多智能体协同
 - [ ] v1.0：安装包全平台产物（NSIS / DMG / AppImage）+ 增量更新
 
