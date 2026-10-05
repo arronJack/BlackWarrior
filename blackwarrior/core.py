@@ -233,12 +233,34 @@ class WarriorCore:
         except Exception:
             aff = {}
 
+        # 心跳缩放系数由情绪世界模型给出，UI 的"心跳节律"面板直接读它。
+        # 放在 core 层注入，因为 affect 是 core 的组件、内核本身并不知道它。
+        try:
+            cog["tick_scale"] = round(float(self.affect.suggest_tick_scale()), 3)
+        except Exception:
+            cog["tick_scale"] = 1.0
+
+        # 补齐 UI 直接消费的两个字段。
+        # 放在这里而不是让前端去猜嵌套结构——前端改一次后端改一次，迟早对不上。
+        loop = self.continuum.status()
+        try:
+            loop["queue_size"] = int((loop.get("queue") or {}).get("total") or 0)
+        except Exception:
+            loop["queue_size"] = 0
+        try:
+            last = ((loop.get("scheduler") or {}).get("last") or {})
+            loop["next_tick_in"] = last.get("interval")
+            loop["next_reason"] = last.get("reason") or ""
+        except Exception:
+            loop["next_tick_in"] = None
+
         return {
             "version": version_info(),
             "running": self.is_running(),
             "uptime": round(time.time() - self.started_at, 1),
             "activated": bool(self.config.is_activated()),
-            "loop": self.continuum.status(),
+            "loop": loop,
+            "data_dir": str(self.paths.data_root()),
             "db": db_stats,
             "tools": self.tools.stats(),
             "llm": self.gateway.stats(),

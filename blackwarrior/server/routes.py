@@ -182,6 +182,11 @@ def get_cognition(core, body, params, handler):
     """认知内核快照：档位、记忆强度分布、焦点、情绪、预测误差。"""
     try:
         snap = core.kernel.snapshot()
+        # 心跳缩放来自情绪世界模型（core 层组件），内核本身不知道它
+        try:
+            snap["tick_scale"] = round(float(core.affect.suggest_tick_scale()), 3)
+        except Exception:
+            pass
     except Exception as ex:
         snap = {"error": str(ex)}
     try:

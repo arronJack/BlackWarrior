@@ -88,6 +88,10 @@
         <div class="head-right">
           <span class="chip" id="chipTier">档位 —</span>
           <span class="chip" id="chipModel">模型 —</span>
+          <button class="chip tgl" id="btnSpeak" title="朗读回复（浏览器语音合成）">
+            <svg viewBox="0 0 24 24" class="ic"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M17 8a5 5 0 0 1 0 8"/></svg>
+            <span>朗读</span>
+          </button>
           <span class="chip live" id="chipLink"><i></i>链路</span>
         </div>
       </header>
@@ -103,6 +107,9 @@
       </div>
 
       <form class="composer" id="composer">
+        <button type="button" class="icobtn" id="btnMic" title="语音输入（浏览器语音识别）">
+          <svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+        </button>
         <button type="button" class="icobtn" id="btnClear" title="清空会话显示">
           <svg viewBox="0 0 24 24"><path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14"/></svg>
         </button>
@@ -258,21 +265,41 @@
         <div class="panel">
           <div class="panel-h">人格与主循环</div>
           <label class="field"><span>名称</span><input id="setName" /></label>
-          <label class="field"><span>人格设定</span><textarea id="setPersona" rows="3"></textarea></label>
+          <label class="field"><span>语气 / 人格</span><textarea id="setPersona" rows="3"
+                   placeholder="冷静、克制、直接，不奉承"></textarea></label>
           <label class="field"><span>空闲心跳（秒）</span><input id="setTick" type="number" min="10" /></label>
-          <label class="field"><span>唤醒时段</span><input id="setAwake" placeholder="例如 8-23" /></label>
-          <label class="switch"><input type="checkbox" id="setAuto" /><span>允许空闲自主思考（TICK）</span></label>
+          <label class="field"><span>唤醒期心跳（秒）</span><input id="setAwakeInt" type="number" min="1" /></label>
+          <label class="switch"><input type="checkbox" id="setHeart" /><span>启用心跳（空闲自主思考 TICK）</span></label>
         </div>
 
         <div class="panel">
           <div class="panel-h">能力开关</div>
           <label class="switch"><input type="checkbox" id="capTools" /><span>工具系统</span></label>
-          <label class="switch"><input type="checkbox" id="capFs" /><span>文件系统读写（沙箱内）</span></label>
+          <label class="switch"><input type="checkbox" id="capDanger" /><span>允许危险工具（删除/写文件）</span></label>
           <label class="switch"><input type="checkbox" id="capShell" /><span>Shell 命令（危险命令拒绝）</span></label>
           <label class="switch"><input type="checkbox" id="capWeb" /><span>联网搜索与网页阅读</span></label>
           <label class="switch"><input type="checkbox" id="capCog" /><span>PASM 认知内核</span></label>
           <div class="kv"><span>服务地址</span><b id="setUrl">—</b></div>
           <div class="kv"><span>数据目录</span><b id="setDataDir">—</b></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-h">语音</div>
+          <label class="switch"><input type="checkbox" id="capVoice" /><span>语音总开关</span></label>
+          <label class="switch"><input type="checkbox" id="capTts" /><span>朗读回复（TTS）</span></label>
+          <label class="switch"><input type="checkbox" id="capAsr" /><span>语音输入（ASR）</span></label>
+          <label class="field"><span>音色（留空用系统默认）</span>
+            <input id="setVoice" placeholder="如 Ting-Ting / Microsoft Xiaoxiao" /></label>
+          <p class="hint">语音走浏览器内置能力（Web Speech API），不装任何依赖。<br />
+             <b>朗读（TTS）</b>：完全本地、离线可用，浏览器与桌面壳均支持。<br />
+             <b>识别（ASR）</b>：Chromium 走云端识别；桌面壳内置的 Chromium
+             <b>不带该服务的 API key</b>，因此在 Electron 里基本不可用
+             （会置灰），在 Chrome / Edge 浏览器打开才可用。
+             要在桌面壳内做真语音输入，需换本地 ASR（whisper.cpp 等），
+             当前版本不引入。
+          </p>
+          <div class="kv"><span>识别引擎</span><b id="asrState">—</b></div>
+          <div class="kv"><span>朗读引擎</span><b id="ttsState">—</b></div>
         </div>
       </div>
     </section>
@@ -327,6 +354,7 @@
 
 <script src="./js/api.js"></script>
 <script src="./js/viz.js"></script>
+<script src="./js/voice.js"></script>
 <script src="./js/app.js"></script>
 </body>
 </html>

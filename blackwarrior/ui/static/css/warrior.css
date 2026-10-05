@@ -154,6 +154,18 @@ code { font-family: var(--mono); }
 .chip.live.off i { background: var(--red); box-shadow: 0 0 8px var(--red); }
 @keyframes blink { 50% { opacity: .35; } }
 
+.chip.tgl {
+  display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+  font-family: var(--mono); font-size: 10.5px; padding: 4px 9px; border-radius: 20px;
+  border: 1px solid var(--line2); color: var(--dim); background: transparent;
+}
+.chip.tgl .ic { width: 13px; height: 13px; }
+.chip.tgl:hover { color: var(--txt); }
+.chip.tgl.on { color: var(--cyan); border-color: var(--cyan); background: rgba(55,230,255,.1); }
+.chip.tgl.off { opacity: .5; }
+.icobtn.rec { color: var(--red); border-color: var(--red); animation: blink 1s infinite; }
+.icobtn:disabled { opacity: .35; cursor: not-allowed; }
+
 .ghostbtn {
   border: 1px solid var(--line2); background: rgba(120,180,255,.05);
   color: var(--txt); padding: 6px 12px; border-radius: 7px; cursor: pointer;

@@ -91,12 +91,32 @@ def read_sse_frames(host: str, port: int, seconds: float = 3.0):
     return frames
 
 
+def check_dom_ids() -> None:
+    """前端 DOM id 一致性：JS 引用的 id 必须在 HTML 里存在。
+
+    `$('xxx')` 拿到 null 不会抛错，只会在后面某一行静默崩掉——
+    这类问题在浏览器里表现为"页面卡在启动画面"，极难定位，所以静态卡一道。
+    """
+    import re
+    root = ROOT / "blackwarrior" / "ui" / "static"
+    html = (root / "index.html").read_text(encoding="utf-8")
+    ids = set(re.findall(r'id="([^"]+)"', html))
+    js = "".join((root / f).read_text(encoding="utf-8")
+                 for f in ("js/app.js", "js/api.js", "js/viz.js", "js/voice.js"))
+    refs = set(re.findall(r"\$\('([^']+)'\)", js))
+    missing = sorted(refs - ids)
+    check("前端 DOM id 全部存在", not missing, str(missing))
+
+
 def main() -> int:
     import socket
 
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
+
+    print("== 0. 前端静态一致性 ==")
+    check_dom_ids()
 
     print("== 1. 拉起内核 ==")
     env = dict(__import__("os").environ)
@@ -137,12 +157,27 @@ def main() -> int:
         st, tools = get(base + "/api/tools")
         check("tools 注册", st == 200 and tools.get("count", 0) >= 10)
 
+        # 以下三项是 UI 直接消费的字段，曾因前后端不对齐静默失效
+        # （队列恒 0 / 下一跳恒空 / 数据目录为空），各加一道回归卡点
+        check("status.loop.queue_size", isinstance(status.get("loop", {}).get("queue_size"), int))
+        check("status.data_dir", bool(status.get("data_dir")))
+        check("status.loop.next_tick_in 键存在", "next_tick_in" in status.get("loop", {}))
+
+        st, pv = get(base + "/api/providers")
+        items = pv.get("items") or []
+        # UI 用 p.key 填下拉 value；写成 p.id 会把中文名当 provider 存回去
+        check("providers 用 key 字段", bool(items) and all("key" in p for p in items),
+              str([list(p.keys())[:3] for p in items[:1]]))
+        st, cfg0 = get(base + "/api/settings")
+        check("settings 含 tick_interval", "tick_interval" in cfg0)
+
         print("== 3. 静态 UI ==")
         for path_, must in [("index.html", "BlackWarrior"),
                             ("css/warrior.css", "BlackWarrior"),
                             ("js/app.js", "EventStream"),
                             ("js/api.js", "BW.api"),
-                            ("js/viz.js", "MemoryGraph")]:
+                            ("js/viz.js", "MemoryGraph"),
+                            ("js/voice.js", "BW.voice")]:
             with urllib.request.urlopen(base + "/" + path_, timeout=8) as r:
                 body = r.read().decode("utf-8")
             check(f"静态 {path_}", r.status == 200 and must in body)
@@ -179,6 +214,9 @@ def main() -> int:
         check("记忆已写入", st == 200 and mems.get("count", 0) >= 1)
         st, cog = get(base + "/api/cognition")
         check("认知快照", st == 200 and "cognition" in cog and "affect" in cog)
+        check("认知快照含 tick_scale", "tick_scale" in (cog.get("cognition") or {}))
+        st, hist = get(base + "/api/conversations")
+        check("会话历史可回看", st == 200 and isinstance(hist.get("items"), list))
         st, mood = get(base + "/api/cognition/mood?n=20")
         check("情绪曲线", st == 200 and isinstance(mood.get("curve"), list))
 

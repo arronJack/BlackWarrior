@@ -17,6 +17,7 @@
     running: false,
     activated: false,
     status: null,
+    settings: null,
     cog: null,
     memories: [],
     pending: null,      // {turn_id, el, text, resolve}
@@ -26,7 +27,8 @@
     graph: null,
     beat: null,
     star: null,
-    toolPills: {}
+    toolPills: {},
+    voice: { tts: false, asr: false, recording: false }
   };
 
   // ============================================================ 启动序列
@@ -77,8 +79,16 @@
     bindSettings();
     bindActivate();
     bindPower();
+    bindVoice();
+
+    // 先拿配置（语音开关来自它），再连事件流
+    api.settings().then(cfg => {
+      S.settings = cfg;
+      applySpeechConfig(cfg);
+    }).catch(() => {});
 
     connectSSE();
+    loadHistory();      // 刷新页面不该"失忆"
     refresh();
     setInterval(refresh, 5000);
     setInterval(() => { S.beat.frame(); }, 60);
@@ -215,6 +225,39 @@
   }
 
   // ============================================================ 对话
+  // ============================================================ 历史会话
+  function loadHistory() {
+    api.history(50).then(items => {
+      const box = $('stream');
+      box.innerHTML = '';
+      (items || []).forEach(m => {
+        const role = m.role === 'user' ? 'user' : (m.role === 'system' ? 'system' : 'agent');
+        // 自主 TICK 的产出单独渲染成低打扰样式，不混在对话里
+        if (String(m.content || '').indexOf('[自主 TICK]') === 0) {
+          const wrap = document.createElement('div');
+          wrap.className = 'msg tick';
+          const b = document.createElement('div');
+          b.className = 'bubble';
+          b.textContent = String(m.content).replace('[自主 TICK]', '自省 ·');
+          wrap.appendChild(b);
+          box.appendChild(wrap);
+          return;
+        }
+        addMsg(role, m.content || '', '');
+      });
+      if (!(items || []).length) {
+        const wrap = document.createElement('div');
+        wrap.className = 'msg system';
+        const b = document.createElement('div');
+        b.className = 'bubble';
+        b.textContent = '黑武士已就位。它会在空闲时自己思考，也会记住你说过的话。';
+        wrap.appendChild(b);
+        box.appendChild(wrap);
+      }
+      scrollDown();
+    }).catch(() => {});
+  }
+
   function bindChat() {
     const form = $('composer'), input = $('input');
     input.addEventListener('input', () => {
@@ -278,6 +321,7 @@
     setThinking('待机');
     clearToolPills();
     scrollDown();
+    speakReply(text);
   }
 
   function addMsg(role, text, tag) {
@@ -393,8 +437,7 @@
 
       $('hRun').textContent = S.running ? '运行中' : '已停止';
       $('hRun').className = S.running ? 'on' : 'off';
-      $('hQueue').textContent = ((st.loop || {}).queue_size !== undefined ? st.loop.queue_size :
-                                 ((st.loop || {}).queue || 0));
+      $('hQueue').textContent = ((st.loop || {}).queue_size || 0);
       $('hMem').textContent = ((st.memory || {}).count || 0);
       $('hUptime').textContent = fmt.dur(st.uptime || 0);
 
@@ -404,8 +447,9 @@
       $('chipTier').textContent = '档位 ' + (((st.cognition || {}).tier) || '—');
       $('chipTier2').textContent = '档位 ' + (((st.cognition || {}).tier) || '—');
       $('chipEngine').textContent = '引擎 ' + (((st.cognition || {}).engine) || '—');
-      const pv = (st.llm || {});
-      $('chipModel').textContent = '模型 ' + (S.activated ? (pv.model || '已连接') : '未接入');
+      const modelName = (S.settings && S.settings.model) || '';
+      $('chipModel').textContent = '模型 ' +
+        (S.activated ? (modelName || '已连接') : '未接入');
       $('chatSub').textContent = S.running
         ? ('持续运行 · ' + (((st.cognition || {}).tier) || '') + ' 内核 · 工具 ' + (((st.tools || {}).count) || 0))
         : '主循环已停止';
@@ -614,63 +658,99 @@
   }
 
   let PROVIDERS = [];
+  /**
+   * 填充供应商下拉。
+   *
+   * 字段名必须跟后端 `Provider.as_dict()` 对齐：那里是 **key**，不是 id。
+   * 这里如果写成 `p.id`，value 会退化成中文名（如 "DeepSeek"），
+   * 保存后 provider 查表失败 —— 表现是"填了 Key 却一直连不上"，极难排查。
+   */
+  function fillProviders(sel, current) {
+    sel.innerHTML = '';
+    PROVIDERS.forEach(p => {
+      const o = document.createElement('option');
+      o.value = p.key;
+      o.textContent = (p.name || p.key) + (p.requires_key === false ? '（可离线）' : '');
+      sel.appendChild(o);
+    });
+    if (current) { sel.value = current; }
+  }
+
   function loadSettings() {
     Promise.all([api.settings(), api.providers()]).then(([cfg, pv]) => {
       PROVIDERS = (pv && pv.items) ? pv.items : [];
-      const sel = $('setProvider');
-      sel.innerHTML = '';
-      PROVIDERS.forEach(p => {
-        const o = document.createElement('option');
-        o.value = p.id || p.name;
-        o.textContent = (p.label || p.id || p.name) + (p.requires_key === false ? '（可离线）' : '');
-        sel.appendChild(o);
-      });
-      sel.value = cfg.provider || (PROVIDERS[0] && (PROVIDERS[0].id || PROVIDERS[0].name)) || '';
+      fillProviders($('setProvider'), cfg.provider);
+      fillProviders($('actProvider'), cfg.provider);
+
+      // 选中模型的建议：切换供应商时给个默认值，省得用户去查文档
+      $('setProvider').onchange = () => {
+        const p = PROVIDERS.find(x => x.key === $('setProvider').value);
+        if (p && p.default_model) { $('setModel').value = p.default_model; }
+      };
 
       $('setModel').value = cfg.model || '';
       $('setKey').value = '';
       $('setBase').value = cfg.base_url || '';
-      $('setName').value = cfg.agent_name || '';
-      $('setPersona').value = cfg.persona || '';
-      $('setTick').value = cfg.idle_tick_seconds || cfg.tick_interval || 300;
-      $('setAwake').value = cfg.awake_hours || '';
-      $('setAuto').checked = cfg.auto_tick !== false;
+      $('setName').value = cfg.agent_name || '黑武士';
+
+      // agent_persona 是对象；UI 只暴露最有用的 tone 字段，回填时保留其余字段
+      const persona = cfg.agent_persona || {};
+      $('setPersona').value = persona.tone || '';
+
+      $('setTick').value = cfg.tick_interval || 60;
+      $('setAwakeInt').value = cfg.awakening_interval || 10;
+      $('setHeart').checked = cfg.heartbeat_enabled !== false;
 
       $('capTools').checked = cfg.tools_enabled !== false;
-      $('capFs').checked = cfg.fs_enabled !== false;
-      $('capShell').checked = cfg.shell_enabled === true;
+      $('capDanger').checked = cfg.allow_dangerous_tools === true;
+      $('capShell').checked = cfg.shell_enabled !== false;
       $('capWeb').checked = cfg.web_enabled !== false;
       $('capCog').checked = cfg.cognition_enabled !== false;
-      $('setUrl').textContent = location.origin;
-      $('setDataDir').textContent = cfg.data_dir || '—';
 
-      const as = $('actProvider');
-      as.innerHTML = sel.innerHTML;
-      as.value = sel.value;
+      $('capVoice').checked = cfg.voice_enabled === true;
+      $('capTts').checked = cfg.tts_enabled === true;
+      $('capAsr').checked = cfg.asr_enabled === true;
+      $('setVoice').value = cfg.tts_voice || '';
+
+      $('setUrl').textContent = location.origin;
+      $('setDataDir').textContent = (S.status && S.status.data_dir) || '—';
+      paintSpeechState();
     }).catch(() => {});
   }
 
   function saveSettings() {
+    // agent_persona 是对象，只覆盖 tone，其余字段原样保留
+    const persona = (S.settings && S.settings.agent_persona) || {};
+    persona.tone = $('setPersona').value.trim();
+
     const patch = {
       provider: $('setProvider').value,
       model: $('setModel').value.trim(),
       base_url: $('setBase').value.trim(),
-      agent_name: $('setName').value.trim(),
-      persona: $('setPersona').value.trim(),
-      idle_tick_seconds: Number($('setTick').value) || 300,
-      awake_hours: $('setAwake').value.trim(),
-      auto_tick: $('setAuto').checked,
+      agent_name: $('setName').value.trim() || '黑武士',
+      agent_persona: persona,
+      tick_interval: Number($('setTick').value) || 60,
+      awakening_interval: Number($('setAwakeInt').value) || 10,
+      heartbeat_enabled: $('setHeart').checked,
       tools_enabled: $('capTools').checked,
-      fs_enabled: $('capFs').checked,
+      allow_dangerous_tools: $('capDanger').checked,
       shell_enabled: $('capShell').checked,
       web_enabled: $('capWeb').checked,
-      cognition_enabled: $('capCog').checked
+      cognition_enabled: $('capCog').checked,
+      voice_enabled: $('capVoice').checked,
+      tts_enabled: $('capTts').checked,
+      asr_enabled: $('capAsr').checked,
+      tts_voice: $('setVoice').value.trim()
     };
+    // 空 model 表示"用该供应商默认模型"，不写空串进配置
+    if (!patch.model) { delete patch.model; }
     const k = $('setKey').value.trim();
     if (k) { patch.api_key = k; }
 
-    api.save(patch).then(() => {
-      toast('已保存，部分改动需重启内核生效', false);
+    api.save(patch).then((cfg) => {
+      S.settings = cfg || S.settings;
+      applySpeechConfig(cfg || patch);
+      toast('已保存（心跳/内核类改动重启内核后生效）');
       refresh();
     }).catch(e => toast(e.message, true));
   }
@@ -712,17 +792,106 @@
     if (!PROVIDERS.length) {
       api.providers().then(pv => {
         PROVIDERS = (pv && pv.items) ? pv.items : [];
-        const as = $('actProvider');
-        as.innerHTML = '';
-        PROVIDERS.forEach(p => {
-          const o = document.createElement('option');
-          o.value = p.id || p.name;
-          o.textContent = (p.label || p.id || p.name) + (p.requires_key === false ? '（可离线）' : '');
-          as.appendChild(o);
-        });
+        fillProviders($('actProvider'), (S.settings || {}).provider);
       }).catch(() => {});
     }
     m.classList.remove('hidden');
+  }
+
+  // ============================================================ 语音
+  /**
+   * 语音链路：ASR 走 Chromium 云端识别（需联网），TTS 走本地合成（离线可用）。
+   * 任一环节不可用时必须**显式降级**（置灰 + 说明），不能静默失效。
+   */
+  function bindVoice() {
+    const mic = $('btnMic'), speak = $('btnSpeak');
+    const cap = BW.voice.available();
+
+    if (!cap.asr) {
+      mic.disabled = true;
+      mic.title = cap.asr_note;
+    }
+    if (!cap.tts) {
+      speak.classList.add('off');
+      speak.title = '当前环境不支持语音合成';
+    }
+
+    mic.addEventListener('click', () => {
+      if (S.voice.recording) {
+        BW.voice.stopAsr();
+        setRecording(false);
+        return;
+      }
+      if (!BW.voice.available().asr) { toast(cap.asr_note, true); return; }
+      const input = $('input');
+      const before = input.value;
+      setRecording(true);
+      BW.voice.startAsr({
+        onPartial: (t) => { input.value = before ? before + t : t; },
+        onFinal: (t) => {
+          setRecording(false);
+          input.value = before ? (before + t).trim() : t;
+          if (input.value.trim()) { $('composer').requestSubmit(); }
+        },
+        onEnd: () => setRecording(false),
+        onError: (msg) => { setRecording(false); toast(msg, true); }
+      });
+    });
+
+    speak.addEventListener('click', () => {
+      const next = !S.voice.tts;
+      S.voice.tts = next;
+      paintSpeakBtn();
+      if (!next) { BW.voice.stopSpeak(); }
+      // 顺手把偏好写回配置，下次启动保持
+      api.save({ tts_enabled: next }).then(cfg => { S.settings = cfg || S.settings; })
+        .catch(() => {});
+    });
+  }
+
+  function setRecording(on) {
+    S.voice.recording = !!on;
+    const mic = $('btnMic');
+    mic.classList.toggle('rec', !!on);
+    mic.title = on ? '正在聆听…点击结束' : '语音输入（浏览器语音识别）';
+    if (!on) { return; }
+  }
+
+  function applySpeechConfig(cfg) {
+    cfg = cfg || {};
+    const canAsr = BW.voice.available().asr;
+    const canTts = BW.voice.available().tts;
+    S.voice.tts = !!cfg.tts_enabled && canTts;
+    S.voice.asr = !!cfg.asr_enabled && canAsr;
+    if (!canAsr) { $('btnMic').disabled = true; }
+    paintSpeakBtn();
+  }
+
+  function paintSpeakBtn() {
+    const b = $('btnSpeak');
+    if (!b) { return; }
+    b.classList.toggle('on', !!S.voice.tts);
+    b.classList.toggle('off', !S.voice.tts && !BW.voice.available().tts);
+  }
+
+  function paintSpeechState() {
+    const cap = BW.voice.available();
+    const voices = BW.voice.listVoices();
+    $('asrState').textContent = cap.asr ? '可用（联网）' : '不可用';
+    $('ttsState').textContent = cap.tts
+      ? ('可用 · ' + (voices.length ? voices.length + ' 个音色' : '系统默认')) : '不可用';
+  }
+
+  /** 回复落定时朗读（受 tts 开关控制）。 */
+  function speakReply(text) {
+    if (!S.voice.tts || !text) { return; }
+    const v = (S.settings || {}).tts_voice || '';
+    // 去掉 Markdown 花括号与过长的自省文本，避免念一堆符号
+    const clean = String(text)
+      .replace(/```[\s\S]*?```/g, '（代码块）')
+      .replace(/[`*_#>|]/g, '')
+      .slice(0, 400);
+    BW.voice.speak(clean, { voice: v, lang: 'zh-CN' });
   }
 
   // ============================================================ 主循环开关
