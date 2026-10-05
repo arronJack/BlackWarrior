@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>黑武士 BlackWarrior</title>
+<link rel="stylesheet" href="./css/warrior.css" />
+</head>
+<body>
+
+<!-- ============================ 启动序列 ============================ -->
+<div id="boot" class="boot">
+  <div class="boot-grid"></div>
+  <div class="boot-core">
+    <svg class="boot-sigil" viewBox="0 0 200 200" aria-hidden="true">
+      <defs>
+        <linearGradient id="bg1" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#37e6ff" /><stop offset="1" stop-color="#8b5cff" />
+        </linearGradient>
+      </defs>
+      <polygon class="sigil-ring" points="100,12 176,56 176,144 100,188 24,144 24,56"
+               fill="none" stroke="url(#bg1)" stroke-width="1.2" />
+      <polygon class="sigil-ring r2" points="100,34 157,67 157,133 100,166 43,133 43,67"
+               fill="none" stroke="#37e6ff" stroke-width="0.8" opacity=".5" />
+      <path class="sigil-blade" d="M100 52 L108 96 L100 150 L92 96 Z" fill="url(#bg1)" opacity=".9" />
+      <path d="M74 100 H126" stroke="#ff3b5c" stroke-width="2.4" stroke-linecap="round" />
+      <circle class="sigil-core" cx="100" cy="100" r="6" fill="#fff" />
+    </svg>
+    <div class="boot-title">B L A C K W A R R I O R</div>
+    <div class="boot-log" id="bootLog"></div>
+    <div class="boot-bar"><i id="bootBar"></i></div>
+  </div>
+</div>
+
+<!-- ============================ 主界面 ============================ -->
+<div id="app" class="app hidden">
+
+  <!-- 背景层 -->
+  <canvas id="stars" class="stars"></canvas>
+  <div class="scanlines"></div>
+  <div class="vignette"></div>
+
+  <!-- ---------- 左侧导航 ---------- -->
+  <nav class="rail">
+    <div class="brand" title="黑武士 BlackWarrior">
+      <svg viewBox="0 0 40 40" class="brand-mark">
+        <polygon points="20,3 34,11 34,29 20,37 6,29 6,11" fill="none"
+                 stroke="#37e6ff" stroke-width="1.4" />
+        <path d="M20 9 L23 20 L20 31 L17 20 Z" fill="#8b5cff" />
+        <path d="M12 20 H28" stroke="#ff3b5c" stroke-width="1.8" stroke-linecap="round" />
+      </svg>
+      <span class="brand-txt">黑武士</span>
+    </div>
+
+    <button class="nav-btn active" data-view="chat" title="对话">
+      <svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4V5z"/></svg><em>对话</em>
+    </button>
+    <button class="nav-btn" data-view="memory" title="记忆">
+      <svg viewBox="0 0 24 24"><path d="M12 3a5 5 0 0 1 5 5v1a4 4 0 0 1 0 8v1a3 3 0 0 1-3 3H10a3 3 0 0 1-3-3v-1a4 4 0 0 1 0-8V8a5 5 0 0 1 5-5z"/><path d="M9 9h6M9 13h6"/></svg><em>记忆</em>
+    </button>
+    <button class="nav-btn" data-view="cognition" title="认知">
+      <svg viewBox="0 0 24 24"><path d="M3 14c2-6 6-9 9-9s7 3 9 9"/><path d="M7 18c1.5-3 3.5-4.5 5-4.5S15.5 15 17 18"/><circle cx="12" cy="20" r="1.6"/></svg><em>认知</em>
+    </button>
+    <button class="nav-btn" data-view="activity" title="活动">
+      <svg viewBox="0 0 24 24"><path d="M4 12h4l2-6 3 12 2-6h5"/></svg><em>活动</em>
+    </button>
+    <button class="nav-btn" data-view="settings" title="设置">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2.2 2.2M16.8 16.8 19 19M19 5l-2.2 2.2M7.2 16.8 5 19"/></svg><em>设置</em>
+    </button>
+
+    <div class="rail-foot">
+      <button id="btnPower" class="nav-btn power" title="停止 / 启动主循环">
+        <svg viewBox="0 0 24 24"><path d="M12 3v9"/><path d="M7 6.5a8 8 0 1 0 10 0"/></svg><em>主循环</em>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ---------- 主舞台 ---------- -->
+  <main class="stage">
+
+    <!-- ========== 对话 ========== -->
+    <section class="view active" id="view-chat">
+      <header class="view-head">
+        <div>
+          <h1>对话流</h1>
+          <p class="sub" id="chatSub">持续运行 · 认知内核在线</p>
+        </div>
+        <div class="head-right">
+          <span class="chip" id="chipTier">档位 —</span>
+          <span class="chip" id="chipModel">模型 —</span>
+          <span class="chip live" id="chipLink"><i></i>链路</span>
+        </div>
+      </header>
+
+      <div class="stream" id="stream"></div>
+
+      <div class="thinkbar" id="thinkbar">
+        <div class="tb-left">
+          <span class="pulse"></span>
+          <span id="thinkText">待机</span>
+        </div>
+        <div class="tb-tools" id="thinkTools"></div>
+      </div>
+
+      <form class="composer" id="composer">
+        <button type="button" class="icobtn" id="btnClear" title="清空会话显示">
+          <svg viewBox="0 0 24 24"><path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14"/></svg>
+        </button>
+        <textarea id="input" rows="1" placeholder="对黑武士说话……  Enter 发送 / Shift+Enter 换行"></textarea>
+        <button type="submit" class="sendbtn" id="btnSend">
+          <svg viewBox="0 0 24 24"><path d="M4 12l16-8-6 8 6 8-16-8z"/></svg>
+          <span>发送</span>
+        </button>
+      </form>
+    </section>
+
+    <!-- ========== 记忆 ========== -->
+    <section class="view" id="view-memory">
+      <header class="view-head">
+        <div>
+          <h1>记忆库</h1>
+          <p class="sub">结构化记忆 · 遗忘曲线保留度 · 语义检索</p>
+        </div>
+        <div class="head-right">
+          <input id="memSearch" class="mini-input" placeholder="语义检索…" />
+          <button class="ghostbtn" id="btnConsolidate">睡眠巩固</button>
+          <button class="ghostbtn danger" id="btnMemClear">清空</button>
+        </div>
+      </header>
+
+      <div class="mem-wrap">
+        <div class="mem-side">
+          <div class="panel">
+            <div class="panel-h">记忆图谱</div>
+            <canvas id="memGraph" class="mem-graph"></canvas>
+            <div class="legend">
+              <span><i style="background:#37e6ff"></i>高保留</span>
+              <span><i style="background:#8b5cff"></i>中保留</span>
+              <span><i style="background:#41506b"></i>衰退中</span>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-h">保留度分布</div>
+            <canvas id="retentionChart" class="mini-chart"></canvas>
+          </div>
+        </div>
+        <div class="mem-list" id="memList"></div>
+      </div>
+    </section>
+
+    <!-- ========== 认知 ========== -->
+    <section class="view" id="view-cognition">
+      <header class="view-head">
+        <div>
+          <h1>认知内核</h1>
+          <p class="sub">黑武士独有 · 情绪动力学 / 预测误差 / 焦点栈 / 记忆巩固</p>
+        </div>
+        <div class="head-right">
+          <span class="chip" id="chipEngine">引擎 —</span>
+          <span class="chip" id="chipTier2">档位 —</span>
+        </div>
+      </header>
+
+      <div class="cog-grid">
+        <div class="panel span2">
+          <div class="panel-h">情绪曲线 <small>valence × arousal → mood</small></div>
+          <canvas id="moodChart" class="chart"></canvas>
+        </div>
+
+        <div class="panel">
+          <div class="panel-h">预测误差</div>
+          <div class="gauge-wrap">
+            <canvas id="errGauge" class="gauge"></canvas>
+            <div class="gauge-num"><b id="errVal">0.00</b><small>当前</small></div>
+          </div>
+          <div class="kv"><span>滑动均值</span><b id="errAvg">0.00</b></div>
+          <div class="kv"><span>好奇心</span><b id="curVal">0.00</b></div>
+          <div class="kv"><span>心跳缩放</span><b id="tickScale">1.00×</b></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-h">情绪状态</div>
+          <div class="moodbig"><b id="moodNow">0.00</b><small id="moodLabel">平稳</small></div>
+          <div class="bars" id="moodBars"></div>
+        </div>
+
+        <div class="panel span2">
+          <div class="panel-h">话题焦点栈 <small>带衰减</small></div>
+          <div class="focus-list" id="focusList"></div>
+        </div>
+
+        <div class="panel span3">
+          <div class="panel-h">内核快照 <small>原始 JSON</small></div>
+          <pre class="jsonbox" id="cogJson">—</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 活动 ========== -->
+    <section class="view" id="view-activity">
+      <header class="view-head">
+        <div>
+          <h1>活动与工具</h1>
+          <p class="sub">工具调用审计 · 事件流 · 提醒</p>
+        </div>
+        <div class="head-right">
+          <button class="ghostbtn" id="btnReloadTools">重载工具</button>
+        </div>
+      </header>
+
+      <div class="act-grid">
+        <div class="panel">
+          <div class="panel-h">工具注册表</div>
+          <div class="tool-list" id="toolList"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-h">行动日志</div>
+          <div class="act-list" id="actList"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-h">实时事件流</div>
+          <div class="evt-list" id="evtList"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 设置 ========== -->
+    <section class="view" id="view-settings">
+      <header class="view-head">
+        <div>
+          <h1>设置</h1>
+          <p class="sub">模型 · 人格 · 主循环 · 能力开关</p>
+        </div>
+        <div class="head-right">
+          <button class="ghostbtn" id="btnPing">测试连通</button>
+          <button class="ghostbtn warn" id="btnSave">保存</button>
+        </div>
+      </header>
+
+      <div class="set-grid">
+        <div class="panel">
+          <div class="panel-h">模型供应商</div>
+          <label class="field"><span>Provider</span>
+            <select id="setProvider"></select>
+          </label>
+          <label class="field"><span>模型</span>
+            <input id="setModel" placeholder="deepseek-chat" />
+          </label>
+          <label class="field"><span>API Key</span>
+            <input id="setKey" type="password" placeholder="sk-…" />
+          </label>
+          <label class="field"><span>Base URL（可留空）</span>
+            <input id="setBase" placeholder="自动" />
+          </label>
+          <p class="hint">密钥只保存在本机 <code>data/config.json</code>，界面回显一律脱敏。</p>
+        </div>
+
+        <div class="panel">
+          <div class="panel-h">人格与主循环</div>
+          <label class="field"><span>名称</span><input id="setName" /></label>
+          <label class="field"><span>人格设定</span><textarea id="setPersona" rows="3"></textarea></label>
+          <label class="field"><span>空闲心跳（秒）</span><input id="setTick" type="number" min="10" /></label>
+          <label class="field"><span>唤醒时段</span><input id="setAwake" placeholder="例如 8-23" /></label>
+          <label class="switch"><input type="checkbox" id="setAuto" /><span>允许空闲自主思考（TICK）</span></label>
+        </div>
+
+        <div class="panel">
+          <div class="panel-h">能力开关</div>
+          <label class="switch"><input type="checkbox" id="capTools" /><span>工具系统</span></label>
+          <label class="switch"><input type="checkbox" id="capFs" /><span>文件系统读写（沙箱内）</span></label>
+          <label class="switch"><input type="checkbox" id="capShell" /><span>Shell 命令（危险命令拒绝）</span></label>
+          <label class="switch"><input type="checkbox" id="capWeb" /><span>联网搜索与网页阅读</span></label>
+          <label class="switch"><input type="checkbox" id="capCog" /><span>PASM 认知内核</span></label>
+          <div class="kv"><span>服务地址</span><b id="setUrl">—</b></div>
+          <div class="kv"><span>数据目录</span><b id="setDataDir">—</b></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ---------- 右侧 HUD ---------- -->
+  <aside class="hud">
+    <div class="hud-block">
+      <div class="hud-h">核心状态</div>
+      <div class="stat"><span>运行</span><b id="hRun">—</b></div>
+      <div class="stat"><span>队列</span><b id="hQueue">0</b></div>
+      <div class="stat"><span>记忆</span><b id="hMem">0</b></div>
+      <div class="stat"><span>运行时长</span><b id="hUptime">0s</b></div>
+    </div>
+
+    <div class="hud-block">
+      <div class="hud-h">心跳节律</div>
+      <canvas id="beat" class="beat"></canvas>
+      <div class="stat"><span>下一跳</span><b id="hNext">—</b></div>
+    </div>
+
+    <div class="hud-block grow">
+      <div class="hud-h">思考流</div>
+      <div class="thinkfeed" id="thinkFeed"></div>
+    </div>
+
+    <div class="hud-block">
+      <div class="hud-h">工具活动</div>
+      <div class="toolact" id="toolAct"></div>
+    </div>
+  </aside>
+</div>
+
+<!-- ============================ 激活遮罩 ============================ -->
+<div id="activate" class="modal hidden">
+  <div class="modal-card">
+    <h2>接入大脑</h2>
+    <p class="sub">黑武士未接入模型时也能运行——本地认知内核会接管回复，但无法做复杂推理。
+       填入任意 OpenAI 兼容的 Key 即可解锁完整能力；也可以直接跳过。</p>
+    <label class="field"><span>供应商</span><select id="actProvider"></select></label>
+    <label class="field"><span>API Key</span><input id="actKey" type="password" placeholder="sk-…" /></label>
+    <label class="field"><span>模型</span><input id="actModel" placeholder="留空用推荐模型" /></label>
+    <div class="modal-foot">
+      <button class="ghostbtn" id="actSkip">稍后（离线内核）</button>
+      <button class="sendbtn" id="actGo">连接</button>
+    </div>
+    <div class="act-msg" id="actMsg"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="./js/api.js"></script>
+<script src="./js/viz.js"></script>
+<script src="./js/app.js"></script>
+</body>
+</html>

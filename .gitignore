@@ -1,0 +1,56 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+*.egg
+.pytest_cache/
+.tox/
+.venv/
+venv/
+env/
+
+# ---- Node / Electron ----
+node_modules/
+*.log
+npm-debug.log*
+yarn-error.log
+.electron-cache/
+
+# ---- 黑武士运行数据（绝不进仓）----
+# 注意：必须带前导斜杠锚定到仓库根，否则会把 blackwarrior/runtime/ 源码也忽略掉
+/data/
+/data/runtime/
+/sandbox/
+/blackwarrior_state.json
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.cognition/
+/_testdata/
+
+# ---- 密钥与本地配置 ----
+.env
+.env.*
+config.local.json
+credentials.json
+*.pem
+*.key
+
+# ---- 打包产物 ----
+release/
+out/
+dist_electron/
+*.exe
+*.dmg
+*.AppImage
+*.nsis
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

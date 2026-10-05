@@ -1,0 +1,314 @@
+"""黑武士主控 —— 把所有层串成一个活的系统。
+
+``WarriorCore`` 既是系统门面（给 HTTP 服务与 Electron 壳用），
+也是工具注册的上下文对象（工具通过 ``ctx.xxx`` 访问各层）。
+
+启动顺序（有依赖关系，不能乱）::
+
+    config → paths → store → kernel(PASM) → memory → affect
+        → scheduler → queue → tools → gateway → turn_runner → continuum
+"""
+
+from __future__ import annotations
+
+import time
+from typing import Any, Dict, List, Optional
+
+from . import paths as paths_mod
+from .brain import AffectTracker, CognitiveKernel, MemoryService
+from .config import Config, load_config
+from .db import Store
+from .events import emit
+from .llm.gateway import LLMGateway
+from .llm.turn import TurnRunner, TurnResult
+from .runtime import (
+    Continuum,
+    Message,
+    MessageQueue,
+    PRIORITY_USER,
+    Scheduler,
+)
+from .tools import ToolPolicy, ToolRegistry
+from .tools.builtin import register_builtin
+from .version import version_info
+
+
+class WarriorCore:
+    """黑武士主控。"""
+
+    def __init__(self, config: Optional[Config] = None, *,
+                 data_root: Optional[str] = None,
+                 auto_start: bool = False) -> None:
+        if data_root:
+            import os
+
+            os.environ.setdefault("BLACKWARRIOR_DATA_ROOT", str(data_root))
+
+        self.config = config or load_config()
+        self.paths = paths_mod                    # 工具层通过 ctx.paths 访问
+        self.started_at = time.time()
+
+        # ---- 存储 ----
+        self.store = Store()
+
+        # ---- 认知内核 ----
+        self.kernel = CognitiveKernel(
+            self.config,
+            enabled=bool(self.config.get("cognition_enabled", True)),
+        )
+        self.memory = MemoryService(self.kernel, self.store)
+        self.affect = AffectTracker(self.kernel)
+
+        # ---- 调度 ----
+        self.scheduler = Scheduler(self.config)
+        self.queue = MessageQueue()
+
+        # ---- 工具 ----
+        self.tools = ToolRegistry()
+        self.policy = ToolPolicy(self.config)
+        self._registered_tools = register_builtin(self.tools, self, self.config)
+
+        # ---- 模型 ----
+        self.gateway = LLMGateway(self.config)
+        self.turn_runner = TurnRunner(self, self.gateway)
+
+        # ---- 主循环 ----
+        self.continuum = Continuum(
+            run_turn=self._run_turn,
+            config=self.config,
+            queue=self.queue,
+            scheduler=self.scheduler,
+            hooks={
+                "enqueue_due_reminders": self._enqueue_due_reminders,
+                "next_reminder": self._next_reminder_at,
+                "has_active_task": self._has_active_task,
+                "tick_scale": self._tick_scale,
+            },
+        )
+
+        self._consolidate_counter = 0
+        self._auto_started = False
+        if auto_start:
+            self.start()
+
+    # ------- 生命周期 ---------------------------------------------
+
+    def start(self) -> None:
+        """启动主循环。"""
+        if self._auto_started:
+            return
+        self._auto_started = True
+        self.continuum.start(run_immediate=True)
+        emit("core_started", {"version": version_info()})
+
+    def stop(self) -> None:
+        """停止主循环。"""
+        self.continuum.stop()
+        self._auto_started = False
+
+    def close(self) -> None:
+        """优雅退出：停循环 → 保存认知状态 → 关库。"""
+        try:
+            self.stop()
+        except Exception:
+            pass
+        try:
+            self.kernel.save()
+        except Exception:
+            pass
+        try:
+            self.store.close()
+        except Exception:
+            pass
+        emit("core_stopped", {"ts": time.time()})
+
+    def is_running(self) -> bool:
+        return self.continuum.is_running()
+
+    # ------- 消息入口 ---------------------------------------------
+
+    def send(self, text: str, *, priority: int = PRIORITY_USER,
+             from_id: str = "local", channel: str = "ui",
+             meta: Optional[Dict[str, Any]] = None,
+             dedupe_key: str = "") -> Optional[Message]:
+        """把一条用户消息交给主循环（异步，不阻塞）。"""
+        return self.continuum.push(
+            text, priority=priority, from_id=from_id, channel=channel,
+            meta=meta, dedupe_key=dedupe_key,
+        )
+
+    def ask(self, text: str, *, timeout: float = 120.0,
+            channel: str = "ui") -> TurnResult:
+        """同步问答（CLI / 测试 / 单轮 API 用）。
+
+        注意：正常交互走 :meth:`send`（异步、可打断）。
+        这里直接跑一个回合，不经过主循环队列。
+        """
+        from threading import Event
+
+        return self.turn_runner.run(text, "sync ask", None, Event())
+
+    # ------- 主循环回调 -------------------------------------------
+
+    def _run_turn(self, text: str, label: str, msg: Optional[Message],
+                  abort: Any) -> TurnResult:
+        """主循环每一轮的实际执行体。"""
+        if abort is not None and abort.is_set():
+            return TurnResult("", aborted=True)
+
+        result = self.turn_runner.run(text, label, msg, abort)
+
+        # 心跳期做记忆巩固（"睡眠回放"）
+        try:
+            every = int(self.config.get("consolidate_every", 20) or 20)
+        except Exception:
+            every = 20
+        if every > 0:
+            self._consolidate_counter += 1
+            if self._consolidate_counter >= every:
+                self._consolidate_counter = 0
+                try:
+                    rep = self.memory.consolidate(apply=True)
+                    emit("consolidated", rep)
+                except Exception:
+                    pass
+
+        # 定期保存认知侧车
+        if self._consolidate_counter % 5 == 0:
+            try:
+                self.kernel.save()
+            except Exception:
+                pass
+        return result
+
+    def _enqueue_due_reminders(self) -> None:
+        """把到期的提醒塞进队列。"""
+        try:
+            due = self.store.due_reminders()
+        except Exception:
+            return
+        for r in due:
+            text = f"[提醒] {r.get('title', '')} {r.get('body', '')}".strip()
+            self.queue.push(text, priority=80, lane="user",
+                            from_id="reminder", channel=r.get("channel", "ui"),
+                            dedupe_key=f"reminder-{r.get('id')}")
+            try:
+                self.store.fire_reminder(int(r["id"]))
+            except Exception:
+                pass
+
+    def _next_reminder_at(self) -> Optional[float]:
+        try:
+            r = self.store.next_reminder()
+            return float(r["due_at"]) if r else None
+        except Exception:
+            return None
+
+    def _has_active_task(self) -> bool:
+        try:
+            return len(self.store.active_tasks()) > 0
+        except Exception:
+            return False
+
+    def _tick_scale(self) -> float:
+        try:
+            return float(self.affect.suggest_tick_scale())
+        except Exception:
+            return 1.0
+
+    # ------- 状态 -------------------------------------------------
+
+    def status(self) -> Dict[str, Any]:
+        """完整运行状态（``/status`` 与 UI 状态面板的数据源）。"""
+        try:
+            db_stats = self.store.stats()
+        except Exception:
+            db_stats = {}
+        try:
+            cog = self.kernel.snapshot()
+        except Exception:
+            cog = {}
+        try:
+            aff = self.affect.snapshot()
+        except Exception:
+            aff = {}
+
+        return {
+            "version": version_info(),
+            "running": self.is_running(),
+            "uptime": round(time.time() - self.started_at, 1),
+            "activated": bool(self.config.is_activated()),
+            "loop": self.continuum.status(),
+            "db": db_stats,
+            "tools": self.tools.stats(),
+            "llm": self.gateway.stats(),
+            "memory": self.memory.stats(),
+            "cognition": cog,
+            "affect": aff,
+            "policy": self.policy.stats(),
+        }
+
+    def summary(self) -> Dict[str, Any]:
+        """精简状态（高频轮询用，省带宽）。"""
+        return {
+            "running": self.is_running(),
+            "processing": self.continuum.is_processing(),
+            "queue": self.queue.snapshot(),
+            "mood": round(float(self.kernel.mood), 3),
+            "memories": self.memory.stats().get("count", 0),
+            "tier": self.kernel.tier,
+        }
+
+    # ------- 记忆操作（供 API）------------------------------------
+
+    def list_memories(self, limit: int = 100, category: Optional[str] = None
+                      ) -> List[Dict[str, Any]]:
+        return self.memory.list(limit=limit, category=category)
+
+    def add_memory(self, title: str, brief: str = "", **kw: Any) -> Dict[str, Any]:
+        return self.memory.remember(title, brief, **kw)
+
+    def delete_memory(self, mem_id: int) -> bool:
+        return self.memory.delete(mem_id)
+
+    def clear_memories(self) -> int:
+        return self.memory.clear()
+
+    # ------- 提醒（供 API）----------------------------------------
+
+    def add_reminder(self, title: str, due_at: float, body: str = "") -> int:
+        return self.store.add_reminder(title, due_at, body=body)
+
+    def list_reminders(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
+        return self.store.list_reminders(status=status)
+
+    def cancel_reminder(self, rem_id: int) -> None:
+        self.store.cancel_reminder(rem_id)
+
+    # ------- 配置 -------------------------------------------------
+
+    def save_config(self) -> None:
+        self.config.save()
+
+    def public_config(self) -> Dict[str, Any]:
+        return self.config.public_dict()
+
+    def update_config(self, patch: Dict[str, Any]) -> Dict[str, Any]:
+        """更新配置。改模型相关项后需要重建 gateway 才能生效。"""
+        self.config.update(patch)
+        self.config.save()
+        # provider/base_url/key 变动后，网关读的是 config，无需重建；
+        # 但工具开关变化需要重新注册工具集。
+        if any(k in patch for k in ("shell_enabled", "web_enabled", "tools_enabled")):
+            self._rebuild_tools()
+        return self.config.public_dict()
+
+    def _rebuild_tools(self) -> None:
+        """按当前配置重建工具集（关闭的能力直接不注册）。"""
+        self.tools = ToolRegistry()
+        self._registered_tools = register_builtin(self.tools, self, self.config)
+        emit("tools_reloaded", {"count": len(self._registered_tools)})
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return (f"<WarriorCore running={self.is_running()} "
+                f"tier={self.kernel.tier} tools={len(self.tools)}>")

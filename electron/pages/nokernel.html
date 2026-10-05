@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>内核未启动</title>
+<style>
+  body { margin:0; height:100vh; display:grid; place-items:center;
+         background: radial-gradient(120% 90% at 50% 40%, #0a1020, #04050a);
+         color:#d8e2f2; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  .card { text-align:center; border:1px solid rgba(120,180,255,.2); border-radius:14px;
+          padding:36px 44px; background:rgba(13,17,27,.8); max-width:520px; }
+  h1 { font-size:18px; margin:0 0 10px; color:#37e6ff; letter-spacing:.08em; }
+  p { color:#8fa1bf; font-size:13px; line-height:1.8; margin:0 0 18px; }
+  code { background:rgba(120,180,255,.1); padding:2px 6px; border-radius:4px;
+         font-size:12px; color:#9fd9ff; }
+  button { border:0; border-radius:8px; padding:9px 20px; cursor:pointer; font-size:13px;
+           color:#04121a; font-weight:600;
+           background:linear-gradient(135deg,#37e6ff,#8b5cff); }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>内核离线</h1>
+    <p>Python 内核没能启动或已退出。<br />
+       排查方式：终端执行 <code>blackwarrior serve</code> 查看报错；<br />
+       或设置环境变量 <code>BLACKWARRIOR_PYTHON</code> 指向装有
+       <code>blackwarrior</code> 包的解释器。</p>
+    <button onclick="location.reload()">重试连接</button>
+  </div>
+</body>
+</html>

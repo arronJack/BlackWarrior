@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "blackwarrior"
+version = "0.1.0"
+description = "黑武士 BlackWarrior —— 带真实认知内核的持续运行桌面 AI Agent（PASM 认知引擎 × Electron 桌面壳）"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "arronzheng" }]
+keywords = ["agent", "ai", "pasm", "cognition", "electron", "desktop", "memory"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Desktop",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+# 核心零强制第三方依赖：标准库即可跑（离线优先，对齐 PASM 哲学）。
+# PASM 认知内核为可选增强：装上才启用真内核，没装自动降级且明确标注档位。
+dependencies = []
+
+[project.optional-dependencies]
+pasm = [
+    "pasm-skills>=0.6.3",
+    "pasm-framework>=0.5.4",
+]
+dev = [
+    "pytest>=7.0",
+]
+
+[project.urls]
+Homepage = "https://gitee.com/arronzheng/BlackWarrior"
+Repository = "https://gitee.com/arronzheng/BlackWarrior"
+Changelog = "https://gitee.com/arronzheng/BlackWarrior/blob/main/CHANGELOG.md"
+
+[project.scripts]
+blackwarrior = "blackwarrior.cli:main"
+
+[tool.setuptools]
+packages = ["blackwarrior"]
+
+[tool.setuptools.package-data]
+blackwarrior = ["ui/static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
