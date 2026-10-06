@@ -129,6 +129,13 @@ class Continuum:
         """停止主循环。"""
         with self._lock:
             self._running = False
+            # ★ 必须复位 _loop_started，否则 stop 之后再也 start 不起来：
+            #   start() 开头有 `if self._loop_started: return` 的重入保护，
+            #   而这个标志原先只在 start 里置 True、stop 里没清——
+            #   于是「停止 → 开启」这个最基本的使用序列，第二步静默失效
+            #   （表现为 UI 点开启没反应、status 一直显示已停止）。
+            #   2026-10-06 由用户实测报「停止后开启不了」发现。
+            self._loop_started = False
             if self._timer is not None:
                 try:
                     self._timer.cancel()

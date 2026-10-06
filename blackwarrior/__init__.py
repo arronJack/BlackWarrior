@@ -238,6 +238,29 @@ def selftest() -> bool:
     except Exception as ex:
         print(f"  ! 无法校验 README 安装命令：{type(ex).__name__}")
 
+    # 10. 主循环可反复启停（2026-10-06 用户报「停止后开启不了」）
+    # 这类"一次性守卫"型 bug 只有真实使用才暴露，测试必须钉住。
+    # ★ 放在所有分支之外 —— 之前插在 V2 分支里，无 V2 时整段不执行。
+    import time as _t
+    from .core import WarriorCore as _WC
+    _c = _WC(auto_start=False)
+    try:
+        _c.start(); _t.sleep(0.35)
+        check(_c.is_running(), "主循环可启动")
+        _c.stop(); _t.sleep(0.25)
+        check(not _c.is_running(), "主循环可停止")
+        _c.start(); _t.sleep(0.35)
+        check(_c.is_running(), "★停止后可再次启动")
+        _c.stop(); _t.sleep(0.2)
+        _c.start(); _t.sleep(0.35)
+        check(_c.is_running(), "★可第三次启动（幂等，非一次性）")
+        _c.stop()
+    finally:
+        try:
+            _c.close()
+        except Exception:
+            pass
+
     # 9. 本地媒体库（v0.5）
     # 媒体库是"零依赖可用"能力的代表：实测本机 mutagen/Pillow 全无，
     # 所以内置自己解析文件头。这组断言保证它不会因缺依赖而整体消失。

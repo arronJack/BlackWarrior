@@ -11,9 +11,14 @@
   --panel2:    rgba(18, 24, 38, .66);
   --line:      rgba(120, 180, 255, .13);
   --line2:     rgba(120, 180, 255, .26);
-  --txt:       #d8e2f2;
-  --dim:       #6d7c99;
-  --dim2:      #4d5b76;
+  --txt:       #e8eefb;
+  /* ★ 可读性（2026-10-06 用户实测反馈"文字看不清、差点点错"后调整）：
+     原 dim=#6d7c99 / dim2=#4d5b76 在 #04050a 深底上对比度不足 4.5:1，
+     dim2 只有约 2.6:1 —— 属于"能看见但读起来费劲"的区间，
+     而导航按钮文字（9.5px）用的正是 dim2，实际是全站最难读的一处。
+     现统一提到 WCAG AA 级：dim ≥ 4.6:1，dim2 ≥ 3.2:1（次要文字/图标）。 */
+  --dim:       #97a6c4;
+  --dim2:      #7c8bab;
   --cyan:      #37e6ff;
   --violet:    #8b5cff;
   --red:       #ff3b5c;
@@ -121,12 +126,15 @@ code { font-family: var(--mono); }
 .brand-mark { width: 34px; height: 34px; filter: drop-shadow(0 0 10px rgba(55,230,255,.5)); }
 .brand-txt { font-size: 10px; letter-spacing: .18em; color: var(--dim); }
 .nav-btn {
-  position: relative; width: 54px; height: 52px; border: 0; cursor: pointer;
-  display: grid; place-items: center; gap: 2px; border-radius: var(--r);
-  background: transparent; color: var(--dim2); transition: .18s;
+  /* 2026-10-06：54x52 在1080p下热区偏小，用户反馈"差点连点击都点错"。
+     放大到 68x64（热区 +55%），文字 9.5px -> 12px（9.5px 是全站最难读处）。 */
+  position: relative; width: 68px; height: 64px; border: 0; cursor: pointer;
+  display: grid; place-items: center; gap: 3px; border-radius: var(--r);
+  background: transparent; color: var(--dim); transition: .18s;
 }
-.nav-btn svg { width: 21px; height: 21px; }
-.nav-btn em { font-style: normal; font-size: 9.5px; letter-spacing: .06em; }
+.nav-btn svg { width: 24px; height: 24px; }
+.nav-btn em { font-style: normal; font-size: 12px; letter-spacing: .04em;
+              line-height: 1.1; }
 .nav-btn:hover { color: var(--txt); background: rgba(120,180,255,.06); }
 .nav-btn.active { color: var(--cyan); background: rgba(55,230,255,.09);
                   box-shadow: inset 2px 0 0 var(--cyan); }

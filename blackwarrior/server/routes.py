@@ -310,7 +310,12 @@ def get_bus_stats(core, body, params, handler):
 
 def post_admin_start(core, body, params, handler):
     core.start()
-    return {"ok": True, "running": core.is_running()}
+    running = core.is_running()
+    # ★ 必须如实返回 ok：原先无论是否真起来都写死 {"ok": true}，
+    #   而 running 字段可能是 false —— 调用方（前端按钮）只看 ok 就提示
+    #   "主循环已启动"，用户看到状态没变却收到成功提示，完全摸不着头脑。
+    return {"ok": bool(running), "running": running,
+            "error": "" if running else "主循环未能启动，请查看日志"}
 
 
 def post_admin_stop(core, body, params, handler):

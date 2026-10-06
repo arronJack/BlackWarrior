@@ -6,7 +6,7 @@
 
 <div align="center">
 
-![version](https://img.shields.io/badge/version-0.5.0-37e6ff)
+![version](https://img.shields.io/badge/version-0.5.1-37e6ff)
 ![python](https://img.shields.io/badge/python-3.9%2B-8b5cff)
 ![electron](https://img.shields.io/badge/electron-33-9feaf9)
 ![license](https://img.shields.io/badge/license-MIT-3bffa5)
@@ -621,7 +621,7 @@ BlackWarrior/
 ## 开发与验证
 
 ```bash
-blackwarrior selftest        # 包级自检（50 项，纯本地不依赖网络与模型）
+blackwarrior selftest        # 包级自检（56 项，纯本地不依赖网络与模型）
 python tests/test_server.py  # 端到端：67 项（有 numpy 时 72 项）
 ```
 

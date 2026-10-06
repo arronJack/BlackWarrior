@@ -282,13 +282,27 @@
     if (cloudOn) {
       return api.post('/api/voice/speak', { text: String(text).slice(0, 2000),
                                             voice: opts.voice || '' })
-        .then(() => true)          // 云端合成由后端流式返回，前端另行播放
-        .catch(() => V._speakLocal(text, opts));
+        .then(function (r) {
+          // ★ 后端在云端不可用时返回 **HTTP 200 + {ok:false, reason}**
+          //   （这是"诚实降级"的设计，不是传输失败）。原写法是无条件
+          //   `.then(() => true)`，于是 ok:false 也被当成成功 ——
+          //   本地朗读的 fallback 永远不会被触发，表现为
+          //   「勾了朗读但就是没声音」，且没有任何提示。
+          //   必须先判 r.ok / r.__raw__（音频数据），否则回落本地合成。
+          if (r && r.ok === false) { return V._speakLocal(text, opts); }
+          // 后端返回音频时，这里只负责把播放接力给全局的音频事件
+          if (opts.onRemote) { opts.onRemote(); }
+          return true;
+        })
+        .catch(function () { return V._speakLocal(text, opts); });
     }
     return Promise.resolve(V._speakLocal(text, opts));
   };
 
   V._speakLocal = function (text, opts) {
+    // SS 为空 = 这个运行环境没有语音合成（老旧 WebView / 无音频设备）。
+    // 静默返回 false 会让"勾了朗读却没声音"变成无解之谜 ——
+    // 所以在这里给出可读的原因，交给调用方提示用户。
     if (!SS) { return false; }
     try { SS.cancel(); } catch (_) {}
     const u = new SpeechSynthesisUtterance(String(text));
@@ -298,7 +312,7 @@
     const v = pickVoice(opts.voice);
     if (v) { u.voice = v; }
     if (opts.onEnd) { u.onend = opts.onEnd; }
-    SS.speak(u);
+    try { SS.speak(u); } catch (_) { return false; }
     return true;
   };
 

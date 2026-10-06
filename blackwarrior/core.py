@@ -154,8 +154,17 @@ class WarriorCore:
     # ------- 生命周期 ---------------------------------------------
 
     def start(self) -> None:
-        """启动主循环。"""
-        if self._auto_started:
+        """启动主循环（可重复调用 —— 幂等）。"""
+        #★ 这里原先是 `if self._auto_started: return` 的"一次性"语义，
+        #   而 cli/electron 启动时已经调过一次 start()（把 _auto_started 置
+        #   True）。于是 UI 上点「开启」永远被这个 return 拦掉——
+        #   接口还返回 {"ok": true, "running": false}，看起来"调用成功"
+        #   但主循环根本没起，status 一直显示已停止。
+        #   2026-10-06 用户报「主循环停止后开启不了」即此因。
+        #
+        # 正确语义：start/stop 本就该可反复调用，由 continuum 自己判断
+        # 是否已在运行；core 这层只做转发。
+        if self.is_running():
             return
         self._auto_started = True
         self.continuum.start(run_immediate=True)

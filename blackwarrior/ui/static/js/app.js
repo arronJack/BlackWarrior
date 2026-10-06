@@ -195,7 +195,12 @@
 
       case 'turn_end':
       case 'turn_finished':
-        if (S.pending) { finishPending(S.pending.text, false); }
+        // ★ 必须把 error 传进气泡，否则失败时用户只看到「（空回复）」，
+        //   而真正的原因（模型不可达 / key 无效 / 超上下文）只出现在
+        //   下方活动流里，容易被当成"应用没反应"。
+        if (S.pending) {
+          finishPending(S.pending.text, false, (p && p.error) || '');
+        }
         setThinking('待机');
         clearToolPills();
         break;
@@ -331,10 +336,19 @@
     });
   }
 
-  function finishPending(text, offline) {
+  function finishPending(text, offline, errorText) {
     if (!S.pending || S.pending.done) { return; }
     S.pending.done = true;
-    renderBubble(S.pending.el, text || '（空回复）', false);
+    // 三态：正常回复 / 本地兜底 / 失败（带原因）
+    // 失败时不要显示"（空回复）"这种无信息量的字眼 ——
+    // 直接把原因写进气泡，用户立刻知道该去检查模型配置还是网络。
+    if (errorText) {
+      renderBubble(S.pending.el, '调用失败：' + errorText, false, 'bad');
+      const tag = S.pending.el.querySelector('.tag');
+      if (tag) { tag.textContent = '未完成'; tag.classList.add('bad'); }
+    } else {
+      renderBubble(S.pending.el, text || '（空回复）', false);
+    }
     if (offline) {
       const tag = S.pending.el.querySelector('.tag');
       if (tag) { tag.textContent = '本地认知内核'; }
@@ -343,7 +357,7 @@
     setThinking('待机');
     clearToolPills();
     scrollDown();
-    speakReply(text);
+    if (!errorText) { speakReply(text); }
   }
 
   function addMsg(role, text, tag) {
@@ -365,7 +379,7 @@
     return b;
   }
 
-  function renderBubble(bubble, text, streaming) {
+  function renderBubble(bubble, text, streaming, kind) {
     if (!bubble) { return; }
     let body = bubble.querySelector('.body');
     if (!body) {
@@ -374,6 +388,9 @@
       bubble.appendChild(body);
     }
     body.textContent = text || '';
+    // kind='bad' 时整条气泡标红：错误信息不该和正常回复长得一样，
+    // 否则用户会以为是"它回答得不好"，而不是"调用失败了"。
+    bubble.classList.toggle('bad', kind === 'bad');
     let cur = bubble.querySelector('.cursor');
     if (streaming) {
       if (!cur) { cur = document.createElement('i'); cur.className = 'cursor'; bubble.appendChild(cur); }
@@ -686,11 +703,45 @@
   // ============================================================ 设置页
   function bindSettings() {
     $('btnSave').addEventListener('click', saveSettings);
-    $('btnPing').addEventListener('click', () => {
-      api.ping().then(r => {
-        toast(r && r.ok ? ('连通 · ' + (r.model || '')) : ('失败：' + ((r && r.error) || '未知')));
-      }).catch(e => toast(e.message, true));
-    });
+    const pingBtn = $('btnPing');
+    if (pingBtn) {
+      pingBtn.addEventListener('click', function () {
+        // ★ ping 是**同步阻塞**的（后端最长等15 秒），原实现点击后既不
+        //   禁用按钮也不给任何提示 —— 网络不通时表现为"点了没反应"，
+        //   用户不知道是卡住了还是没点上。
+        //   现在：立刻置为「检测中…」并禁用，成功/失败都恢复。
+        const label = pingBtn.textContent;
+        pingBtn.disabled = true;
+        pingBtn.textContent = '检测中…';
+        let done = false;
+        const restore = function () {
+          if (done) { return; }
+          done = true;
+          pingBtn.disabled = false;
+          pingBtn.textContent = label;
+        };
+        // 25 秒兜底：后端 15 秒超时 + 网络栈重试，最坏也不该无限转圈
+        setTimeout(function () {
+          if (done) { return; }
+          restore();
+          toast('检测超时（25 秒无响应）—— 请检查 base_url 是否可达、'
+              + '以及代理/防火墙设置', true);
+        }, 25000);
+        api.ping().then(function (r) {
+          restore();
+          if (r && r.ok) {
+            toast('连通 · ' + (r.model || '') + ' · ' + (r.latency_ms || '?') + 'ms');
+          } else {
+            const err = (r && r.error) || '未知原因';
+            const extra = (r && r.status) ? ('（HTTP ' + r.status + '）') : '';
+            toast('失败：' + String(err).slice(0, 120) + extra, true);
+          }
+        }).catch(function (e) {
+          restore();
+          toast(e.message, true);
+        });
+      });
+    }
     $('btnReloadTools').addEventListener('click', () => {
       api.tools().then(() => { toast('工具已重载'); loadActivity(); });
     });
@@ -969,6 +1020,7 @@
   }
 
   /** 回复落定时朗读（受 tts 开关控制）。 */
+  let _ttsWarned = false;
   function speakReply(text) {
     if (!S.voice.tts || !text) { return; }
     const v = (S.settings || {}).tts_voice || '';
@@ -977,15 +1029,34 @@
       .replace(/```[\s\S]*?```/g, '（代码块）')
       .replace(/[`*_#>|]/g, '')
       .slice(0, 400);
-    BW.voice.speak(clean, { voice: v, lang: 'zh-CN' });
+    BW.voice.speak(clean, { voice: v, lang: 'zh-CN' })
+      .then(function (ok) {
+        // 只提醒一次，避免每条消息都弹同一个提示变成噪音
+        if (ok === false && !_ttsWarned) {
+          _ttsWarned = true;
+          toast('朗读不可用：云端合成未启用，且本机浏览器无语音合成能力'
+                + '（可在设置里配 TTS，或换用系统语音）', true);
+        }
+      });
   }
 
   // ============================================================ 主循环开关
   function bindPower() {
-    $('btnPower').addEventListener('click', () => {
-      const fn = S.running ? api.stop() : api.start();
-      fn.then(() => { toast(S.running ? '主循环已停止' : '主循环已启动'); refresh(); })
-        .catch(e => toast(e.message, true));
+    const b = $('btnPower');
+    if (!b) { return; }
+    b.addEventListener('click', () => {
+      // 提示文案必须在**调用前**根据目标状态算好：
+      // 原写法先发请求再 toast，用的是「请求发出时」的旧状态，
+      // 于是点「停止」却提示"主循环已启动"，与实际相反 ——
+      // 用户据此判断"没停下来"，实际是提示错了。
+      const wasRunning = S.running;
+      const fn = wasRunning ? api.stop() : api.start();
+      fn.then(() => {
+        toast(wasRunning ? '主循环已停止' : '主循环已启动');
+        // 立刻回读一次真实状态，不靠乐观更新 ——
+        // 之前"停止后开不了"时，按钮状态会一直停在旧值，看着像没生效。
+        return refresh();
+      }).catch(e => toast(e.message, true));
     });
   }
 

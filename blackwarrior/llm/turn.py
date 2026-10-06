@@ -154,9 +154,20 @@ class TurnRunner:
         if verdict:
             emit("pasm2_verify", {"turn_id": turn_id, **verdict})
 
+        # ★ error 必须随 turn_end 一起发出去。
+        #   原先只发 {rounds, chars, aborted}，于是「模型不可达 / key 无效 /
+        #   上下文超长」这类失败的 text 是空串，前端拿到的就是一个**空气泡**
+        #   且没有任何错误提示 —— 用户只能看到"它不说话"，完全无从下手。
+        #   这正是2026-10-06 用户报「对话是空回复」的原因。
         emit("turn_end", {"turn_id": turn_id, "rounds": result.rounds,
                           "chars": len(result.text), "aborted": result.aborted,
-                          "verify": verdict})
+                          "verify": verdict,
+                          "error": result.error or "",
+                          "ok": not result.error})
+        if result.error:
+            # 再单独发一条 error，前端可据此显示醒目的失败提示
+            emit("error", {"turn_id": turn_id, "where": "llm",
+                           "message": result.error})
         return result
 
     # ------- 生成循环 ---------------------------------------------
