@@ -81,6 +81,7 @@
     bindPower();
     bindVoice();
     bindPanorama();
+    bindMind();
 
     // 先拿配置（语音开关来自它），再连事件流
     api.settings().then(cfg => {
@@ -120,6 +121,7 @@
         if (v === 'activity') { loadActivity(); }
         if (v === 'settings') { loadSettings(); }
         if (v === 'panorama') { loadPanorama(); }
+        if (v === 'mind') { loadMind(); }
       });
     });
   }
@@ -211,6 +213,21 @@
 
       case 'cognition':
         loadCognition();
+        break;
+
+      case 'pasm2_step':
+        // V2 每步感知：把认知信号送进思考流，让"底座在工作"看得见
+        pushFeed('V2 感知 step' + ((p && p.step) || '?') +
+                 '｜实体#' + ((p && p.entity) || 0) +
+                 '｜门控' + (((p && p.gate_passed) === false) ? '拦下' : '放行'),
+                 'cog');
+        if (S.view === 'mind') { loadMind(); }
+        break;
+
+      case 'pasm2_gate':
+        pushFeed('安全层 ' + (p && p.name) + ' → ' +
+                 ((p && p.allowed) ? '放行' : '拒绝：' + ((p && p.reason) || '')),
+                 (p && p.allowed) ? 'tool' : 'err');
         break;
 
       case 'error':
@@ -1047,6 +1064,112 @@
         '<div class="pf-item"><span class="u">' + fmt.esc(it.url || '') + '</span>' +
         '<span class="c">' + fmt.esc((it.content || '').slice(0, 140)) + '</span></div>'
       ).join('');
+    }).catch(() => {});
+  }
+
+  // ============================================================ 心智（v0.3 · PASM V2）
+  function bindMind() {
+    const sl = $('btnMindSleep');
+    if (sl) {
+      sl.addEventListener('click', () => {
+        api.mindSleep().then(r => {
+          const rep = (r && r.report) || {};
+          const al = rep.imbalance_alerts || [];
+          toast(al.length
+            ? ('睡眠完成，' + al.length + ' 条失衡告警')
+            : '睡眠完成，无失衡告警');
+          loadMind();
+        }).catch(e => toast(e.message, true));
+      });
+    }
+    const gr = $('btnMindGrowth');
+    if (gr) {
+      gr.addEventListener('click', () => {
+        api.mindGrowth().then(r => {
+          const rv = (r && r.review) || {};
+          toast('成长复盘：' + (rv.n_alerts || 0) + ' 条告警，' +
+                ((rv.proposals || []).length) + ' 条参数建议');
+          loadMind();
+        }).catch(e => toast(e.message, true));
+      });
+    }
+  }
+
+  function loadMind() {
+    api.mind().then(st => {
+      st = st || {};
+      $('chipPasm2').textContent = st.available
+        ? ('V2 ' + (st.version || '') + ' · ' + (st.profile || ''))
+        : 'V2 未接入';
+      $('chipPasm2').className = 'chip ' + (st.available ? 'on' : 'off');
+
+      // 十九层
+      const box = $('layerList');
+      box.innerHTML = '';
+      const layers = st.layers || [];
+      if (!layers.length) {
+        box.innerHTML = '<div class="empty" style="padding:18px">' +
+          (st.reason || '未接入 PASM V2') + '</div>';
+      }
+      layers.forEach(l => {
+        const d = document.createElement('div');
+        d.className = 'layer-item' + (l.active ? ' on' : '');
+        const v = l.value;
+        const pct = (v === null || v === undefined) ? 0
+          : Math.round(Math.max(0, Math.min(1, Math.abs(v))) * 100);
+        d.innerHTML =
+          '<span class="ln">' + fmt.esc(l.layer) + '</span>' +
+          '<span class="lname">' + fmt.esc(l.name) + '</span>' +
+          '<span class="lbar"><i style="width:' + pct + '%"></i></span>' +
+          '<span class="lval">' + (v === null || v === undefined ? '—' : fmt.num(v)) + '</span>' +
+          '<span class="lnote">' + fmt.esc(l.note || '') + '</span>';
+        box.appendChild(d);
+      });
+
+      // 安全层
+      const sb = $('safetyBox');
+      const ss = st.safety_state || {};
+      const sf = (st.safety || {}) || {};
+      const locks = sf.locks || {};
+      let html = '<div class="kv"><span>可用</span><b>' +
+        (ss.available ? '是' : '否') + '</b></div>';
+      html += '<div class="kv"><span>白名单工具</span><b>' +
+        (ss.allowlist_size === undefined ? '—' : ss.allowlist_size) + '</b></div>';
+      html += '<div class="kv"><span>检查 / 拦截</span><b>' +
+        (ss.total_checks || 0) + ' / ' + (ss.blocked || 0) + '</b></div>';
+      html += '<div class="kv"><span>连续拒绝</span><b>' +
+        (ss.consecutive_blocks || 0) + '</b></div>';
+      html += '<div class="kv"><span>锁死</span><b class="' +
+        (ss.locked_out ? 'bad' : 'good') + '">' + (ss.locked_out ? '是' : '否') + '</b></div>';
+      const onLocks = Object.keys(locks).filter(k => locks[k]);
+      html += '<div class="locks">' + (onLocks.length
+        ? onLocks.map(k => '<span class="lock on">' + fmt.esc(k) + '</span>').join('')
+        : '<span class="empty">无已解锁安全锁</span>') + '</div>';
+      sb.innerHTML = html;
+
+      // 计数
+      $('mStep').textContent = st.step === undefined ? '—' : st.step;
+      $('mEntities').textContent = st.entities === undefined ? '—' : st.entities;
+      $('mSymbols').textContent = st.symbols === undefined ? '—' : st.symbols;
+      $('mEdges').textContent = st.memory_graph_edges === undefined ? '—' : st.memory_graph_edges;
+      $('mSemantic').textContent = st.semantic_embedding ? '真语义' : '哈希（无语义）';
+
+      // 失衡告警
+      const ab = $('alertBox');
+      const alerts = st.alerts || [];
+      if (!alerts.length) {
+        ab.innerHTML = '<div class="empty" style="padding:18px">' +
+          '无失衡告警 —— 内核各项自洽。点「睡眠巩固」可触发一次全量体检。</div>';
+      } else {
+        ab.innerHTML = alerts.map(a =>
+          '<div class="alert-item ' + (a.severity === 'error' ? 'bad' : 'warn') + '">' +
+          '<div class="ac">' + fmt.esc(a.code || '') + '</div>' +
+          '<div class="ae">' + fmt.esc(a.evidence || '') + '</div>' +
+          '<div class="aa">' + fmt.esc(a.action || '') + '</div></div>'
+        ).join('');
+      }
+
+      $('mindJson').textContent = JSON.stringify(st, null, 2);
     }).catch(() => {});
   }
 

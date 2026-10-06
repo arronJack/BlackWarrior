@@ -84,6 +84,17 @@
     addPrefetch:(u, ttl)  => api.post('/api/prefetch', { url: u, ttl: ttl || 3600 }),
     clearPrefetch:()      => api.del('/api/prefetch'),
 
+    // ---- PASM V2 十九层心智（v0.3）
+    mind:     ()          => api.get('/api/mind'),
+    mindLayers:()         => api.get('/api/mind/layers'),
+    mindObserve:(t)       => api.post('/api/mind/observe', { text: t }),
+    mindSleep: ()         => api.post('/api/mind/sleep'),
+    mindGrowth:()         => api.post('/api/mind/growth'),
+    mindWhatIf:(seed,steps)=> api.post('/api/mind/whatif', { context_seed: seed||[], steps: steps||6 }),
+    mindVerify:(p)        => api.post('/api/mind/verify', p),
+    mindTell: (r)         => api.post('/api/mind/tell', { reference: r }),
+    gateReset: ()         => api.post('/api/mind/gate-reset'),
+
     // ---- 设置
     settings: ()          => api.get('/api/settings'),
     save:     (patch)     => api.post('/api/settings', patch),
@@ -111,7 +122,8 @@
     'thinking', 'reply', 'reply_delta', 'tool_call', 'tool_result', 'tool_event',
     'prediction', 'cognition', 'consolidated', 'context_built', 'quota',
     'processing_preempted', 'tick_skipped', 'tools_reloaded', 'error',
-    'activation_required', 'activation_required_cleared', 'reminder', 'memory'
+    'activation_required', 'activation_required_cleared', 'reminder', 'memory',
+    'pasm2_step', 'pasm2_gate'
   ];
 
   /**

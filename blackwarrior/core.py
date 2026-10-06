@@ -69,6 +69,11 @@ class WarriorCore:
         self.policy = ToolPolicy(self.config)
         self._registered_tools = register_builtin(self.tools, self, self.config)
 
+        # ---- v0.3：PASM V2 十九层认知底座 ----
+        # 必须在工具注册之后构造：V2 安全层的工具白名单要拿真实工具名，
+        # 否则空 allowlist = 全拒（pasm2 的保守起点），会把正常工具全拦掉。
+        self.pasm2 = self._build_pasm2()
+
         # ---- 模型 ----
         self.gateway = LLMGateway(self.config)
         self.turn_runner = TurnRunner(self, self.gateway)
@@ -102,6 +107,45 @@ class WarriorCore:
         self._auto_started = False
         if auto_start:
             self.start()
+
+    # ------- v0.3：PASM V2 桥接 -----------------------------------
+
+    def _build_pasm2(self) -> Any:
+        """按配置构建 PASM V2 桥接层。
+
+        V2 是**可选增强**（需要 numpy + pasm-agent）。装了就用真底座，
+        没装就保持 V1 引擎 / 内置降级，并在 ``/status`` 与「心智」页
+        **明确标注原因**——不把降级伪装成正常。
+        """
+        from .brain.pasm2_bridge import build_bridge
+
+        try:
+            profile = str(self.config.get("pasm2_profile", "full") or "full")
+        except Exception:
+            profile = "full"
+        try:
+            enabled = bool(self.config.get("pasm2_enabled", True))
+        except Exception:
+            enabled = True
+        if not enabled:
+            from .brain.pasm2_bridge import Pasm2Bridge
+            b = Pasm2Bridge(profile)
+            b.reason = "pasm2_enabled=False（配置关闭）"
+            return b
+        # 把真实工具名交给 V2 安全层（构造期就要给，事后补会触发"全拒"）
+        names = []
+        try:
+            names = [s.name for s in self.tools.specs()]
+        except Exception:
+            names = []
+        try:
+            return build_bridge(profile, tool_allowlist=names,
+                                data_root=str(self.paths.data_root()))
+        except Exception as ex:      # pragma: no cover - 兜底
+            from .brain.pasm2_bridge import Pasm2Bridge
+            b = Pasm2Bridge(profile)
+            b.reason = f"PASM V2 桥接层构建异常，已降级：{type(ex).__name__}: {ex}"
+            return b
 
     # ------- 生命周期 ---------------------------------------------
 
@@ -310,6 +354,7 @@ class WarriorCore:
             "affect": aff,
             "policy": self.policy.stats(),
             "panorama": panorama,
+            "pasm2": self.pasm2.status() if self.pasm2 else {},
         }
 
     def summary(self) -> Dict[str, Any]:
@@ -371,6 +416,14 @@ class WarriorCore:
         """按当前配置重建工具集（关闭的能力直接不注册）。"""
         self.tools = ToolRegistry()
         self._registered_tools = register_builtin(self.tools, self, self.config)
+        # 工具集变了，V2 安全层白名单必须跟着变——否则新开的工具会被
+        # 安全层判成"不在白名单"而全拒，或者已关的工具还在白名单里漏过。
+        try:
+            if self.pasm2 is not None and getattr(self.pasm2, "available", False):
+                names = [s.name for s in self.tools.specs()]
+                self.pasm2.set_tool_allowlist(names)
+        except Exception:
+            pass
         emit("tools_reloaded", {"count": len(self._registered_tools)})
 
     def __repr__(self) -> str:  # pragma: no cover

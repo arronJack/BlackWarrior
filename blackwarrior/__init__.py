@@ -72,6 +72,7 @@ def selftest() -> bool:
 
     # 4. 数据库
     from .db.store import Store
+    import json
     import tempfile, os
     tmp = tempfile.mkdtemp(prefix="bw-selftest-")
     st = Store(path=os.path.join(tmp, "t.db"))
@@ -128,6 +129,33 @@ def selftest() -> bool:
     check(len(pf.serve()) >= 1, "预取缓存可服务")
     pf.clear()
     check(len(pf.serve()) == 0, "预取缓存可清空")
+
+    # 9. PASM V2 十九层认知底座（v0.3）
+    from .brain.pasm2_bridge import LAYERS, build_bridge
+    check(len(LAYERS) == 19, f"十九层定义完整（{len(LAYERS)} 层）")
+    b2 = build_bridge("full", tool_allowlist=["get_time", "read_file"])
+    z1 = b2.encode("黑武士")
+    z2 = b2.encode("黑武士")
+    check(len(z1) == 8 and z1 == z2, "象量编码确定且 8 维（纯标准库）")
+    check(b2.encode("黑武士") != b2.encode("白马"), "不同文本产出不同象量")
+    if b2.available:
+        d = b2.observe("自检：我叫小志")
+        check(bool(d) and d.get("step") == 1, f"V2 感知可用（{b2.reason}）")
+        stt = b2.status()
+        check(len(stt.get("layers") or []) == 19, "V2 状态含十九层活跃度")
+        check(b2.verify_tool("get_time", {}).get("pass") is True,
+              "V2 安全层放行白名单内工具")
+        check(b2.verify_tool("format_disk", {}).get("pass") is False,
+              "V2 安全层拒绝白名单外工具（内核级闸门）")
+        check(isinstance(b2.growth_review(), dict), "V2 成长复盘可调用")
+        check(json.dumps(b2.status(), default=str) is not None, "V2 状态可序列化")
+    else:
+        check(not b2.observe("x"), "V2 缺席时 observe 安静返回空")
+        check(not b2.verify_tool("x", {}), "V2 缺席时校验安静返回空")
+        check(len(b2.status().get("layers") or []) == 19,
+              "V2 缺席时仍列十九层（标注未接入，不假装有）")
+        print(f"  ! {b2.reason}")
+        print("  ! 装 numpy + pasm-agent 可启用真实十九层底座")
 
     print("-" * 58)
     print("自检结果：" + ("通过" if ok else "失败"))

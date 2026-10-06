@@ -68,6 +68,12 @@ class ContextAssembler:
             blocks.append(pref)
             injected["prefetch"] = True
 
+        # v0.3：PASM V2 十九层认知信号（情绪/预测/门控/躯体标记）
+        v2 = self._pasm2_block()
+        if v2:
+            blocks.append(v2)
+            injected["pasm2"] = True
+
         env = self._env_block()
         if env:
             blocks.append(env)
@@ -210,6 +216,21 @@ class ContextAssembler:
         """预取缓存块（v0.2）。环境预热内容注入，降低逐轮重查成本。"""
         try:
             return self.ctx.prefetch.to_prompt()
+        except Exception:
+            return ""
+
+    def _pasm2_block(self) -> str:
+        """PASM V2 认知块（v0.3）。
+
+        这是"接入 PASM"在**对话质量**上的落点：模型能看到这一轮的世界模型
+        预测是否落空、丘脑门控是否放行、躯体标记偏置——于是它能解释
+        "我为什么觉得这个回答不对劲"，而不只是凭对话历史猜。
+        """
+        try:
+            bridge = getattr(self.ctx, "pasm2", None)
+            if bridge is None or not getattr(bridge, "available", False):
+                return ""
+            return bridge.to_prompt()
         except Exception:
             return ""
 

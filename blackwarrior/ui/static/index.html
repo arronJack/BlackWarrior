@@ -61,6 +61,9 @@
     <button class="nav-btn" data-view="cognition" title="认知">
       <svg viewBox="0 0 24 24"><path d="M3 14c2-6 6-9 9-9s7 3 9 9"/><path d="M7 18c1.5-3 3.5-4.5 5-4.5S15.5 15 17 18"/><circle cx="12" cy="20" r="1.6"/></svg><em>认知</em>
     </button>
+    <button class="nav-btn" data-view="mind" title="心智">
+      <svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="12" cy="12" r="2.4"/><circle cx="18" cy="6" r="2"/><circle cx="18" cy="18" r="2"/><path d="M7.4 7.4l2.8 3.1M7.4 16.6l2.8-3.1M13.6 10.6l2.8-3.1M13.6 13.4l2.8 3.1"/></svg><em>心智</em>
+    </button>
     <button class="nav-btn" data-view="activity" title="活动">
       <svg viewBox="0 0 24 24"><path d="M4 12h4l2-6 3 12 2-6h5"/></svg><em>活动</em>
     </button>
@@ -313,6 +316,52 @@
           </p>
           <div class="kv"><span>识别引擎</span><b id="asrState">—</b></div>
           <div class="kv"><span>朗读引擎</span><b id="ttsState">—</b></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 心智（v0.3 · PASM V2 十九层） ========== -->
+    <section class="view" id="view-mind">
+      <header class="view-head">
+        <div>
+          <h1>心智</h1>
+          <p class="sub">PASM V2 十九层认知底座 · 安全层 · 元认知 · 成长闭环</p>
+        </div>
+        <div class="head-right">
+          <span class="chip" id="chipPasm2">V2 —</span>
+          <button class="ghostbtn" id="btnMindSleep">睡眠巩固</button>
+          <button class="ghostbtn" id="btnMindGrowth">成长复盘</button>
+        </div>
+      </header>
+
+      <div class="mind-wrap">
+        <div class="panel span2">
+          <div class="panel-h">十九层活跃度 <small>★ PASM V2 独有 · 白马 AI 无此层</small></div>
+          <div class="layer-list" id="layerList"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-h">安全层 <small>内核级 · 模型绕不过</small></div>
+          <div id="safetyBox" class="pan-box"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-h">认知计数</div>
+          <div class="kv"><span>步数</span><b id="mStep">—</b></div>
+          <div class="kv"><span>象量实体</span><b id="mEntities">—</b></div>
+          <div class="kv"><span>真符号</span><b id="mSymbols">—</b></div>
+          <div class="kv"><span>记忆图边</span><b id="mEdges">—</b></div>
+          <div class="kv"><span>嵌入语义</span><b id="mSemantic">—</b></div>
+        </div>
+
+        <div class="panel span2">
+          <div class="panel-h">失衡告警 <small>★ 它能发现自己不对劲</small></div>
+          <div id="alertBox" class="pan-box"></div>
+        </div>
+
+        <div class="panel span2">
+          <div class="panel-h">心智快照 <small>原始 JSON</small></div>
+          <pre class="jsonbox" id="mindJson">—</pre>
         </div>
       </div>
     </section>

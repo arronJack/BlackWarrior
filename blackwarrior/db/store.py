@@ -186,10 +186,27 @@ class Store:
         sets.append("updated_at=?")
         params.append(_now())
         params.append(int(mem_id))
+        # 审计：先取旧值再改，才能记到 before/after
+        try:
+            old = self.get_memory(mem_id) or {}
+        except Exception:
+            old = {}
         self.execute("UPDATE memories SET " + ",".join(sets) + " WHERE id=?", params)
+        for k in fields:
+            if k in old:
+                self.add_memory_audit(mem_id, "update", field=k,
+                                      before=str(old.get(k))[:200],
+                                      after=str(fields[k])[:200], source="update")
         return True
 
     def delete_memory(self, mem_id: int) -> bool:
+        try:
+            old = self.get_memory(mem_id) or {}
+        except Exception:
+            old = {}
+        self.add_memory_audit(mem_id, "delete", field="*",
+                              before=str(old.get("title") or "")[:200],
+                              source="delete")
         self.execute("DELETE FROM memories WHERE id=?", (int(mem_id),))
         return True
 
@@ -427,6 +444,52 @@ class Store:
         n = int(row["n"]) if row else 0
         self.execute("DELETE FROM prefetch_cache")
         return n
+
+    # ------- 线索与审计（v0.3）----------------------------------
+
+    def add_clue(self, from_id: int, to_id: int, kind: str = "related",
+                 strength: float = 1.0) -> bool:
+        """建立一条记忆联想边（重复调用为加强，不新增行）。"""
+        self.execute(
+            "INSERT INTO clues(from_id, to_id, kind, strength, ts)"
+            " VALUES(?,?,?,?,?)"
+            " ON CONFLICT(from_id, to_id, kind) DO UPDATE SET"
+            " strength=MIN(2.0, strength + excluded.strength),"
+            " ts=excluded.ts",
+            (int(from_id), int(to_id), str(kind or "related"),
+             float(strength), _now()))
+        self.add_memory_audit(int(to_id), "link", field=str(kind),
+                              after=f"clue:{from_id}", source="link_clue")
+        return True
+
+    def list_clues(self, mem_id: int) -> List[Dict[str, Any]]:
+        """列出与某条记忆相连的全部线索（双向）。"""
+        rows = self.query(
+            "SELECT * FROM clues WHERE from_id=? OR to_id=?"
+            " ORDER BY strength DESC, ts DESC",
+            (int(mem_id), int(mem_id)))
+        for r in rows:
+            r["peer"] = int(r["to_id"]) if int(r["from_id"]) == int(mem_id) \
+                else int(r["from_id"])
+        return rows
+
+    def add_memory_audit(self, mem_id: int, op: str, *, field: str = "",
+                         before: str = "", after: str = "",
+                         source: str = "") -> None:
+        try:
+            self.execute(
+                "INSERT INTO memory_audit(mem_id, op, field, before, after,"
+                " source, ts) VALUES(?,?,?,?,?,?,?)",
+                (int(mem_id or 0), str(op), str(field)[:80],
+                 str(before)[:500], str(after)[:500], str(source)[:40], _now()))
+        except Exception:
+            # 审计写失败不能影响主流程（表可能还不存在）
+            pass
+
+    def memory_audit(self, limit: int = 50) -> List[Dict[str, Any]]:
+        return self.query(
+            "SELECT * FROM memory_audit ORDER BY ts DESC, id DESC LIMIT ?",
+            (int(limit),))
 
     # ------- 运维 -------------------------------------------------
 

@@ -143,6 +143,43 @@ TABLES: "list[str]" = [
     )
     """,
 
+    # ---- 记忆线索（v0.3：联想边，补纯 FTS5 抓不到的语义关系）----
+    # 白马 AI 的"线索模型"。两表结构：clues 存边，audit 存变更账本。
+    """
+    CREATE TABLE IF NOT EXISTS clues (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        from_id     INTEGER NOT NULL,
+        to_id       INTEGER NOT NULL,
+        kind        TEXT    NOT NULL DEFAULT 'related',
+        strength    REAL    NOT NULL DEFAULT 1.0,
+        ts          REAL    NOT NULL,
+        UNIQUE(from_id, to_id, kind)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_clue_from ON clues(from_id)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_clue_to ON clues(to_id)
+    """,
+
+    # ---- 记忆审计账本（v0.3：谁在何时写了/改了什么，可回溯追责）----
+    """
+    CREATE TABLE IF NOT EXISTS memory_audit (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        mem_id      INTEGER NOT NULL DEFAULT 0,
+        op          TEXT    NOT NULL,              -- create / update / delete
+        field       TEXT    NOT NULL DEFAULT '',
+        before      TEXT    NOT NULL DEFAULT '',
+        after       TEXT    NOT NULL DEFAULT '',
+        source      TEXT    NOT NULL DEFAULT '',
+        ts          REAL    NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_maudit_ts ON memory_audit(ts DESC)
+    """,
+
     # ---- 用户画像（v0.2 新增：让黑武士"更懂你"，对标白马 AI 的 user profile）----
     """
     CREATE TABLE IF NOT EXISTS user_profile (
@@ -167,11 +204,19 @@ TABLES: "list[str]" = [
     # ---- 记忆全文索引（v0.2 新增：FTS5 trigram，改善中文子串检索）----
     # 白马 AI 用 FTS5 trigram 做中文全文；黑武士此前只会 LIKE 字面匹配，
     # 轻量档（light）下语义检索较弱，trigram 兜底让"聊过的词"都能被搜到。
+    #
+    # ⚠ 外部内容表（content='memories'）的删除/更新**必须**用 FTS5 专用的
+    # 'delete' 命令形式，不能写普通 DELETE —— 否则触发器会抛
+    # "database disk image is malformed"，且索引与内容表静默失配。
+    # 先 DROP 再建，保证旧库升级到新触发器定义。
     """
     CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts
     USING fts5(title, brief, tags, content='memories', content_rowid='id',
                tokenize='trigram')
     """,
+    "DROP TRIGGER IF EXISTS memories_ai",
+    "DROP TRIGGER IF EXISTS memories_ad",
+    "DROP TRIGGER IF EXISTS memories_au",
     """
     CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
         INSERT INTO memories_fts(rowid, title, brief, tags)
@@ -180,12 +225,14 @@ TABLES: "list[str]" = [
     """,
     """
     CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
-        DELETE FROM memories_fts WHERE rowid = old.id;
+        INSERT INTO memories_fts(memories_fts, rowid, title, brief, tags)
+        VALUES ('delete', old.id, old.title, old.brief, old.tags);
     END
     """,
     """
     CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
-        DELETE FROM memories_fts WHERE rowid = old.id;
+        INSERT INTO memories_fts(memories_fts, rowid, title, brief, tags)
+        VALUES ('delete', old.id, old.title, old.brief, old.tags);
         INSERT INTO memories_fts(rowid, title, brief, tags)
         VALUES (new.id, new.title, new.brief, new.tags);
     END

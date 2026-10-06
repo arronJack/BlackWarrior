@@ -21,7 +21,7 @@ from typing import Any, Dict, Iterator, List, Mapping, Optional
 
 from . import paths
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 #: 需要脱敏的关键词（小写匹配键名尾部）。
 SECRET_HINTS = ("key", "token", "secret", "password", "passwd", "credential")
@@ -99,6 +99,14 @@ DEFAULTS: Dict[str, Any] = {
     "weather_city": "",          # 如 "Beijing" / "上海"（wttr.in 用）
     "hotspot_enabled": False,    # 热榜需要搜索能力，配置 web_search 后可开
     "prefetch_enabled": False,   # 周期性 URL 预取注入上下文
+
+    # ---- PASM V2 十九层认知底座（v0.3）----
+    # V2 需要 numpy + pasm-agent，是**可选增强**：没装就降级到 V1/内置，
+    # 并在「心智」页明确标注，绝不把降级伪装成正常。
+    "pasm2_enabled": True,
+    "pasm2_profile": "full",     # minimal / standard / full / brainwide
+    "pasm2_tool_gate": True,     # 用 V2 安全层做工具调用前的内核级闸门
+    "pasm2_verify_claims": False,  # 输出前对结论性声明做逻辑层校验（更严，也更慢）
 }
 
 #: 环境变量映射：环境变量名 -> 配置键。
@@ -184,6 +192,11 @@ class Config:
             # v1 -> v2：补齐用户画像 / 信息面板 / 预取缓存配置（默认全关）。
             for k in ("weather_enabled", "weather_city", "hotspot_enabled",
                       "prefetch_enabled"):
+                out.setdefault(k, DEFAULTS[k])
+        if version < 3:
+            # v2 -> v3：补齐 PASM V2 十九层认知底座配置。
+            for k in ("pasm2_enabled", "pasm2_profile", "pasm2_tool_gate",
+                      "pasm2_verify_claims"):
                 out.setdefault(k, DEFAULTS[k])
         out["schema_version"] = SCHEMA_VERSION
         return out

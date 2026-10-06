@@ -308,6 +308,61 @@ def main() -> int:
               all(k in (status2.get("panorama") or {})
                   for k in ("profile", "panels", "prefetch")),
               str(list((status2.get("panorama") or {})))[:120])
+
+        print("== 8. PASM V2 十九层心智（v0.3）==")
+        st, mind = get(base + "/api/mind")
+        check("mind 可读", st == 200 and "available" in mind)
+        check("mind 恒有 19 层说明", mind.get("n_layers") in (0, 19),
+              f"n_layers={mind.get('n_layers')}")
+        if mind.get("available"):
+            # V2 在场：走真实能力
+            check("V2 版本号可见", bool(mind.get("version")), str(mind)[:120])
+            check("V2 十九层齐全", len(mind.get("layers") or []) == 19,
+                  str(len(mind.get("layers") or [])))
+            check("V2 诚实标注嵌入语义",
+                  isinstance(mind.get("semantic_embedding"), bool))
+            ss = mind.get("safety_state") or {}
+            check("安全层状态可读", "allowlist_size" in ss, str(ss)[:120])
+            check("白名单与工具集一致",
+                  ss.get("allowlist_size") == tools.get("count"),
+                  f"gate={ss.get('allowlist_size')} tools={tools.get('count')}")
+            st, ob = post(base + "/api/mind/observe", {"text": "端到端测试：认知底座"})
+            check("V2 感知可用", st == 200 and "digest" in ob, str(ob)[:140])
+            st, vv = post(base + "/api/mind/verify",
+                          {"tool": "get_time", "args": {}})
+            check("V2 放行白名单内工具", st == 200 and vv["verdict"].get("pass") is True,
+                  str(vv)[:160])
+            st, vv2 = post(base + "/api/mind/verify",
+                           {"tool": "format_disk", "args": {}})
+            check("V2 拒绝白名单外工具",
+                  st == 200 and vv2["verdict"].get("pass") is False, str(vv2)[:160])
+            st, sl = post(base + "/api/mind/sleep", {})
+            check("V2 睡眠巩固", st == 200 and "report" in sl, str(sl)[:120])
+            st, gw = post(base + "/api/mind/gate-reset", {})
+            check("安全层锁死可复位", st == 200 and "ok" in gw, str(gw)[:120])
+            st, tl = post(base + "/api/mind/tell", {"reference": "端到端测试"})
+            check("V2 符号化注入", st == 200 and "bound" in tl, str(tl)[:120])
+        else:
+            # V2 缺席：必须诚实降级，且动作类端点返回 503 而不是 500
+            check("V2 缺席时给出原因", bool(mind.get("reason")), str(mind)[:120])
+            check("V2 缺席时十九层标注未接入",
+                  all(l.get("active") is False
+                      for l in (mind.get("layers") or [])) or not mind.get("layers"),
+                  str(mind)[:160])
+            for ep, payload, label in [
+                    ("/api/mind/observe", {"text": "x"}, "observe"),
+                    ("/api/mind/sleep", {}, "sleep"),
+                    ("/api/mind/growth", {}, "growth"),
+                    ("/api/mind/tell", {"reference": "x"}, "tell")]:
+                try:
+                    post(base + ep, payload)
+                    code = 200
+                except urllib.error.HTTPError as ex:
+                    code = ex.code
+                check(f"V2 缺席时 {label} 返回 503", code == 503, f"got {code}")
+
+        st, ls = get(base + "/api/mind/layers")
+        check("mind/layers 可读", st == 200 and "layers" in ls)
     finally:
         proc.terminate()
         try:

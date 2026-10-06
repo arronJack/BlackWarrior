@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import time
 from threading import Event
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..context.assembler import ContextAssembler
 from ..events import emit
@@ -89,6 +89,22 @@ class TurnRunner:
         try:
             affect_report = ctx.affect.observe_input(text)
             emit("prediction", {"turn_id": turn_id, **affect_report})
+        except Exception:
+            pass
+
+        # 1b) PASM V2 十九层底座：感知这一步（黑武士 v0.3）
+        # 放在世界模型之后、组装上下文之前：digest 既进上下文，也驱动 UI 心智页。
+        try:
+            bridge = getattr(ctx, "pasm2", None)
+            if bridge is not None and getattr(bridge, "available", False):
+                rpe = 0.0
+                try:
+                    rpe = float((affect_report or {}).get("error") or 0.0)
+                except Exception:
+                    rpe = 0.0
+                digest = bridge.observe(text, rpe=rpe)
+                if digest:
+                    emit("pasm2_step", {"turn_id": turn_id, **digest})
         except Exception:
             pass
 
@@ -223,6 +239,16 @@ class TurnRunner:
                 result = ToolResult(False, name, error=f"未知工具：{name}")
             else:
                 allowed, reason = self.policy.check(spec, args)
+                # v0.3：PASM V2 安全层闸门（内核级，模型绕不过）
+                # 放在应用层 policy 之后、真正执行之前——两道闸门职责不同：
+                #   policy  管"这个工具允不允许用"（配置/风险/频率）
+                #   V2 gate 管"这次调用越不越界"（白名单/限流/注入/伦理）
+                if allowed:
+                    allowed, reason, gate = self._pasm2_gate(name, args)
+                    if gate:
+                        emit("pasm2_gate", {"turn_id": turn_id, "name": name,
+                                             "allowed": allowed,
+                                             "reason": reason})
                 if not allowed:
                     self.policy.deny(name)
                     result = ToolResult(False, name, blocked=True, reason=reason)
@@ -253,6 +279,39 @@ class TurnRunner:
         return out
 
     # ------- 降级回复 ---------------------------------------------
+
+    def _pasm2_gate(self, name: str, args: Any
+                    ) -> Tuple[bool, str, bool]:
+        """PASM V2 安全层闸门。返回 ``(allowed, reason, gate_active)``。
+
+        ``gate_active=False`` 表示 V2 没装或闸门关闭——此时**放行**，
+        交给原有的应用层 policy 判。绝不能因为 V2 缺席就把工具全禁了
+        （那会让"没装 V2"变成"什么都用不了"）。
+
+        V2 在时它是**第二道闸**：白名单外的工具、探测式连试、提示注入、
+        高风险动作都在这一层被拦下，且不依赖 LLM 自觉。
+        """
+        ctx = self.ctx
+        try:
+            if not bool(ctx.config.get("pasm2_tool_gate", True)):
+                return True, "", False
+        except Exception:
+            return True, "", False
+        bridge = getattr(ctx, "pasm2", None)
+        if bridge is None or not getattr(bridge, "available", False):
+            return True, "", False
+        try:
+            v = bridge.verify_tool(str(name), dict(args or {}))
+        except Exception:
+            return True, "", True      # V2 自己出错时不阻断主流程
+        if not v:
+            return True, "", True      # 无校验结果 = 无可校验，不当成拒绝
+        if v.get("pass") is True:
+            return True, "", True
+        failed = ",".join(v.get("failed_layers") or []) or "safety"
+        reason = (f"PASM V2 安全层拒绝（{failed}）："
+                  f"{v.get('detail', {}).get('safety') or '未通过'}")
+        return False, reason, True
 
     def _persist(self, text: str, result: TurnResult, turn_id: str,
                  msg: Optional[Message], *, is_auto: bool = False) -> None:

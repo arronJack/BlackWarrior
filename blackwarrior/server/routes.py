@@ -398,6 +398,105 @@ def delete_prefetch(core, body, params, handler):
     return {"ok": True, "cleared": n}
 
 
+# ============================================================ PASM V2 十九层心智（v0.3）
+
+def get_mind(core, body, params, handler):
+    """心智全景：十九层活跃度 + 安全层 + 成长 + 校验（★黑武士独有）。"""
+    b = getattr(core, "pasm2", None)
+    if b is None:
+        return {"available": False, "reason": "未构建 PASM V2 桥接层"}
+    st = b.status()
+    st["safety_state"] = b.safety_state()
+    st["n_layers"] = len(st.get("layers") or [])
+    return st
+
+
+def get_mind_layers(core, body, params, handler):
+    """只取十九层（UI 轮询用，负载更小）。"""
+    b = getattr(core, "pasm2", None)
+    if b is None:
+        return {"available": False, "layers": []}
+    st = b.status()
+    return {"available": st.get("available"), "reason": st.get("reason"),
+            "layers": st.get("layers") or [], "step": st.get("step"),
+            "entities": st.get("entities"), "symbols": st.get("symbols")}
+
+
+def post_mind_observe(core, body, params, handler):
+    """手动喂一步认知（演示/调试用：看 V2 如何把一句话变成象量与情绪）。"""
+    b = getattr(core, "pasm2", None)
+    if b is None or not getattr(b, "available", False):
+        return 503, {"error": "PASM V2 未接入", "reason": getattr(b, "reason", "")}
+    text = str((body or {}).get("text") or "").strip()
+    if not text:
+        return 400, {"error": "缺少 text"}
+    return {"ok": True, "digest": b.observe(text)}
+
+
+def post_mind_sleep(core, body, params, handler):
+    """睡眠巩固：符号升降级 + 失衡告警（★"发现自己不对劲"）。"""
+    b = getattr(core, "pasm2", None)
+    if b is None or not getattr(b, "available", False):
+        return 503, {"error": "PASM V2 未接入", "reason": getattr(b, "reason", "")}
+    return {"ok": True, "report": b.night()}
+
+
+def post_mind_growth(core, body, params, handler):
+    """成长复盘：读失衡告警 → 提议参数调整（纯函数，不改运行中引擎）。"""
+    b = getattr(core, "pasm2", None)
+    if b is None or not getattr(b, "available", False):
+        return 503, {"error": "PASM V2 未接入", "reason": getattr(b, "reason", "")}
+    return {"ok": True, "review": b.growth_review()}
+
+
+def post_mind_whatif(core, body, params, handler):
+    """反事实推演：「如果那样做会怎样」（层 3 世界模型）。"""
+    b = getattr(core, "pasm2", None)
+    if b is None or not getattr(b, "available", False):
+        return 503, {"error": "PASM V2 未接入", "reason": getattr(b, "reason", "")}
+    seed = (body or {}).get("context_seed") or []
+    try:
+        seed = [int(x) for x in seed]
+    except Exception:
+        return 400, {"error": "context_seed 必须是整数数组"}
+    steps = int((body or {}).get("steps") or 6)
+    return {"ok": True, "result": b.what_if(seed, steps=steps)}
+
+
+def post_mind_verify(core, body, params, handler):
+    """三角校验：把一条声明/一次工具调用交给 V2 四层校验。"""
+    b = getattr(core, "pasm2", None)
+    if b is None or not getattr(b, "available", False):
+        return 503, {"error": "PASM V2 未接入", "reason": getattr(b, "reason", "")}
+    if (body or {}).get("tool"):
+        return {"ok": True, "verdict": b.verify_tool(
+            str(body["tool"]), dict(body.get("args") or {}))}
+    conclusion = str((body or {}).get("conclusion") or "").strip()
+    if not conclusion:
+        return 400, {"error": "需要 conclusion 或 tool"}
+    return {"ok": True, "verdict": b.verify_text(conclusion,
+                                                 list(body.get("facts") or []))}
+
+
+def post_mind_gate_reset(core, body, params, handler):
+    """复位安全层锁死（连续拒绝 20 次会锁死全部工具，防探测扫描）。"""
+    b = getattr(core, "pasm2", None)
+    if b is None or not getattr(b, "available", False):
+        return 503, {"error": "PASM V2 未接入", "reason": getattr(b, "reason", "")}
+    return {"ok": True, **b.reset_safety_lockout()}
+
+
+def post_mind_tell(core, body, params, handler):
+    """符号化注入：告诉认知体「当前感知叫什么」（SLH 桥）。"""
+    b = getattr(core, "pasm2", None)
+    if b is None or not getattr(b, "available", False):
+        return 503, {"error": "PASM V2 未接入", "reason": getattr(b, "reason", "")}
+    ref = str((body or {}).get("reference") or "").strip()
+    if not ref:
+        return 400, {"error": "缺少 reference"}
+    return {"ok": True, **b.tell(ref)}
+
+
 def build_routes() -> Dict[Tuple[str, str], Callable[..., Any]]:
     """构造路由表。"""
     return {
@@ -455,4 +554,15 @@ def build_routes() -> Dict[Tuple[str, str], Callable[..., Any]]:
         ("GET", "/api/prefetch"): get_prefetch,
         ("POST", "/api/prefetch"): post_prefetch,
         ("DELETE", "/api/prefetch"): delete_prefetch,
+
+        # ---- v0.3：PASM V2 十九层心智 ----
+        ("GET", "/api/mind"): get_mind,
+        ("GET", "/api/mind/layers"): get_mind_layers,
+        ("POST", "/api/mind/observe"): post_mind_observe,
+        ("POST", "/api/mind/sleep"): post_mind_sleep,
+        ("POST", "/api/mind/growth"): post_mind_growth,
+        ("POST", "/api/mind/whatif"): post_mind_whatif,
+        ("POST", "/api/mind/verify"): post_mind_verify,
+        ("POST", "/api/mind/tell"): post_mind_tell,
+        ("POST", "/api/mind/gate-reset"): post_mind_gate_reset,
     }
