@@ -502,6 +502,42 @@ blackwarrior --version        # 版本与协议
 
 ---
 
+## 渠道桥接（外部世界 ⇄ 黑武士）
+
+黑武士可以**主动到微信/钉钉找你**，也能从外部渠道接消息进主循环
+（与用户消息共用同一份记忆与认知状态）。
+
+在 `<data_root>/config.json` 声明渠道：
+
+```json
+{
+  "schema_version": 6,
+  "channels": [
+    { "name": "wecom",  "type": "wecom_bot",   "token": "k1",
+      "webhook_url": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=你的KEY" },
+    { "name": "wx",     "type": "serverchan",  "token": "k2",
+      "webhook_url": "你的SENDKEY（sct.ftqq.com 免费，推到微信）" },
+    { "name": "pp",     "type": "pushplus",    "token": "k3",
+      "webhook_url": "你的token（pushplus.plus，免费额度大）" },
+    { "name": "ding",   "type": "dingtalk_bot", "token": "k4",
+      "webhook_url": "https://oapi.dingtalk.com/robot/send?access_token=...",
+      "secret": "SEC开头的加签密钥" }
+  ]
+}
+```
+
+| 能力 | 说明 |
+|---|---|
+| **出站**（回复推送） | 渠道来源的回合结束即推送到对应渠道；企业微信/钉钉自动切段与 20 条/分钟限流；业务失败（额度用尽等）如实记账 |
+| **入站**（回调型） | `POST /api/channel/inbound {"name","token","text"}`，令牌常数时间比较，进统一主循环 |
+| **入站**（轮询型） | 渠道配 `poll_url` + `poll_interval`，后台定期 GET `{items:[{id,text,from_id}]}` 喂主循环，**无需公网回调** |
+| **可观测** | `GET /api/channel/list`（令牌打码）；`/api/status` 的 `channels` 块带投递/失败/拉取计数 |
+
+> 注意：Server酱/PushPlus 为**单向推送**（微信回复不回流）；要双向对话用
+> 企业微信/钉钉群机器人（入站走公网回调或内网穿透），或自建轮询中转。
+
+---
+
 ## 配置项
 
 配置文件落在 `<data_root>/config.json`，支持四级覆盖：
@@ -707,6 +743,10 @@ python tests/test_server.py  # 端到端：84 项（有 numpy 时 89 项）
 十九层心智端点（有 V2 时验真实能力，无 V2 时验 503 降级）。
 
 ---
+
+## 渠道桥接（外部世界 ⇄ 黑武士）
+
+- 渠道在 `config.json` 的 `channels[]` 声明：`webhook`（通用 JSON）/ `wecom_bot`（企业微信群机器人）/ `serverchan`（Server酱·微信推送）/ `pushplus`（PushPlus·微信推送）/ `dingtalk_bot`（钉钉机器人+加签）；支持回调与轮询两种入站。详见「渠道桥接」章节。
 
 ## Roadmap
 
