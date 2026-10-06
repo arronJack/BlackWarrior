@@ -87,6 +87,7 @@ class ChannelBridge:
                 "enabled": c.get("enabled", True) is not False,
                 # v0.6.3：出站类型（webhook / wecom_bot）+ 轮询入站
                 "type": str(c.get("type") or "webhook").strip().lower(),
+                "secret": str(c.get("secret") or ""),  # 钉钉加签密钥
                 "poll_url": str(c.get("poll_url") or "").strip(),
                 "poll_interval": max(3.0, min(interval, 600.0)),
             })
