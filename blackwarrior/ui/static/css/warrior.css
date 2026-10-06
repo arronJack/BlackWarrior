@@ -427,6 +427,16 @@ code { font-family: var(--mono); }
               background: rgba(120,180,255,.10); }
 .med-tabs .mini-input { flex: 1; margin-left: 4px; }
 
+/* ---- 任务（v0.6）---- */
+.task-tab { padding: 4px 11px; border-radius: 999px; font-size: 12px;
+            background: rgba(255,255,255,.04); color: var(--dim);
+            border: 1px solid transparent; cursor: pointer; transition: .15s; }
+.task-tab:hover { color: var(--txt); }
+.task-tab.on { color: var(--cyan); border-color: rgba(120,180,255,.35);
+               background: rgba(120,180,255,.10); }
+.pf-item a { color: var(--cyan); text-decoration: none; margin-right: 2px; }
+.pf-item a:hover { text-decoration: underline; }
+
 /* ---- 心智（v0.3 · PASM V2 十九层） ---- */
 .mind-wrap { flex: 1; overflow: auto; padding: 14px 22px 18px;
              display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }

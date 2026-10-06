@@ -76,6 +76,9 @@
     <button class="nav-btn" data-view="media" title="媒体库">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.4"/><circle cx="12" cy="12" r="2.1"/><path d="M12 3.6v3.2M12 17.2v3.2M3.6 12h3.2M17.2 12h3.2"/></svg><em>媒体</em>
     </button>
+    <button class="nav-btn" data-view="tasks" title="任务">
+      <svg viewBox="0 0 24 24"><path d="M4 6h10M4 12h13M4 18h7"/><circle cx="18.5" cy="18.5" r="3"/><path d="M18.5 16.6v1.9l1.3.8"/></svg><em>任务</em>
+    </button>
 
     <div class="rail-foot">
       <button id="btnPower" class="nav-btn power" title="停止 / 启动主循环">
@@ -402,6 +405,38 @@
             <button class="ghostbtn" id="btnAddPrefetch">登记</button>
           </div>
           <div id="panPrefetch" class="pan-box"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 任务（v0.6） ========== -->
+    <section class="view" id="view-tasks">
+      <header class="view-head">
+        <div>
+          <h1>任务</h1>
+          <p class="sub">多步骤目标 · 持久化 · 重启后可继续 —— 系统不会替你判定完成</p>
+        </div>
+        <div class="head-right">
+          <button class="ghostbtn" id="btnTaskRefresh">刷新</button>
+        </div>
+      </header>
+
+      <div class="pan-grid">
+        <div class="panel span2">
+          <div class="panel-h">进行中<small>重启后遗留的任务会转为「已暂停」，说「继续任务 N」即可恢复</small></div>
+          <div id="taskActive" class="pan-box"></div>
+        </div>
+
+        <div class="panel span2">
+          <div class="panel-h">全部任务<small>点击可推进 / 恢复 / 放弃</small></div>
+          <div class="med-tabs">
+            <button class="task-tab on" data-state="">全部</button>
+            <button class="task-tab" data-state="active">进行中</button>
+            <button class="task-tab" data-state="paused">已暂停</button>
+            <button class="task-tab" data-state="blocked">受阻</button>
+            <button class="task-tab" data-state="done">已完成</button>
+          </div>
+          <div id="taskList" class="pan-box"></div>
         </div>
       </div>
     </section>

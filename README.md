@@ -6,7 +6,7 @@
 
 <div align="center">
 
-![version](https://img.shields.io/badge/version-0.5.1-37e6ff)
+![version](https://img.shields.io/badge/version-0.6.0-37e6ff)
 ![python](https://img.shields.io/badge/python-3.9%2B-8b5cff)
 ![electron](https://img.shields.io/badge/electron-33-9feaf9)
 ![license](https://img.shields.io/badge/license-MIT-3bffa5)
@@ -126,6 +126,77 @@ v0.3 的象量是 sha256 哈希 —— 确定性有，**语义没有**（"苹果
 
 喂给 PASM V2 的仍是 **8 维**（内核 `entity_latent_dim` 的硬约束），
 由 `encode_pasm()` 从内部 64 维截取前 8 维 —— SVD 分量按奇异值降序，前 8 维信息量最大。
+
+### 任务续跑与后台消息（v0.6）
+
+v0.1 就有 `tasks` 表，但**只有骨架**：db 层有 4 个方法，运行时没有任何东西
+驱动它，模型也看不到任务工具。结果是"交代一件要做的事 → 聊完就没了"。
+v0.6 补上了完整闭环。
+
+**任务是有序步骤的集合**，状态全部落库：
+
+| 状态 | 含义 |
+|---|---|
+| `active` | 进行中 |
+| `paused` | 已暂停（**含重启后自动转入**） |
+| `blocked` | 某步连续失败 3 次，等人决策 |
+| `done` / `failed` / `abandoned` | 终态，不可恢复 |
+
+三条关键设计：
+
+**1. 重启后遗留任务转 `paused`，不自动继续跑。**
+进程可能在用户不知情时重启（崩溃后被守护拉起），此时自动推进多步骤任务
+可能做错事。宁可让用户说一句"继续任务 1"。
+
+**2. ★ 绝不自动判定任务完成。**
+所有步骤执行完也只是"待收尾"，必须由模型显式调 `task_complete`
+并给出 `evidence`（凭什么认为做完了）。自动判定 = 自欺欺人。
+证据会写进任务记录供日后审计。
+
+**3. 步骤失败不炸整个任务。**
+一步失败记录原因并停在原地，连续 3 次转 `blocked` 等人决策 ——
+自动重试只会放大错误。
+
+有活跃任务时**心跳自动加快一档**（`tick_scale × 0.75`），让任务在合理
+时间内推进完。
+
+**后台消息**是"外部世界 → 黑武士"的统一入口：渠道接入（微信/Discord/
+钉钉）、定时任务、Webhook 回调都走它。好处是外部消息与用户消息**共用同一
+个主循环**（同一份记忆、同一套认知状态）。优先级低于用户消息 ——
+用户正在说话时后台消息会排队而不是插嘴。
+
+```bash
+# 建一个三步任务
+curl -X POST localhost:8777/api/tasks \
+  -d '{"title":"整理下载目录","steps":"扫描文件;按类型归档;生成索引"}'
+# 推进当前步
+curl -X POST localhost:8777/api/tasks/action \
+  -d '{"task_id":1,"action":"step_done","result":"扫出 42 个文件"}'
+# 收尾（必须给凭据）
+curl -X POST localhost:8777/api/tasks/action \
+  -d '{"task_id":1,"action":"complete","evidence":"已归档并生成 index.md"}'
+# 投一条后台消息
+curl -X POST localhost:8777/api/background \
+  -d '{"text":"定时检查完成","source":"cron"}'
+```
+
+### 资源感知与诊断（v0.6）
+
+补齐"这台机器到底能干什么"这类问题的查询能力，**全部 `safe`**
+（只读、不改系统、不装东西）：
+
+| 工具 | 回答什么 |
+|---|---|
+| `list_software` | 我机器上装了什么（实测读到 442 项；**不扫用户目录**） |
+| `find_command` | 某命令在不在 PATH（含绝对路径与版本，**只查不执行**） |
+| `diagnose_network` | 分层诊断：DNS 能否解析 → TCP 能否连通，区分"断网"与"服务挂了" |
+| `check_port` | 某端口被占没（"服务起不来"的高频原因） |
+| `dev_env` | git / SSH 配置 / 常见运行时是否存在 |
+| `text_stats` | 文件规模速览（行数/字符/最长行） |
+
+**隐私边界**：`dev_env` 只报SSH **公钥文件名**（`.pub`/`.pem`），
+私钥名与内容一律不出现在返回里（有 selftest 守卫）；`list_software`
+只读注册表/包管理器数据库，不遍历用户目录。
 
 ### 本地媒体库（v0.5）
 
@@ -470,6 +541,8 @@ blackwarrior --version        # 版本与协议
 | `embedding_persist` | `true` | 学到的语义落盘，重启不丢 |
 | `media_enabled` | `true` | 本地媒体库（关掉则连工具都不注册） |
 | `media_auto_scan` | `false` | 启动时自动扫一次（大目录首次扫要几十秒，默认关） |
+| `tasks_enabled` | `true` | 任务续跑（关掉则连工具都不注册） |
+| `sysinfo_enabled` | `true` | 资源感知与诊断工具（软件清单/网络/端口/dev 环境） |
 | `weather_enabled` / `weather_city` | `false` / - | 天气面板 |
 | `hotspot_enabled` | `false` | 热点面板 |
 | `prefetch_enabled` | `false` | 预取心跳刷新 |
@@ -501,6 +574,10 @@ blackwarrior --version        # 版本与协议
 | GET | `/api/media/items?category=&q=&limit=` | 列条目（分类 + 关键词过滤） |
 | GET/POST/DELETE | `/api/media/roots` | 目录登记 / 列出 / 取消登记 |
 | POST | `/api/media/scan` | 扫描（`{"full":true}` 全量重扫） |
+| GET | `/api/tasks?state=&limit=` | 任务列表 + 当前活跃任务 |
+| POST | `/api/tasks` | 建任务（`{title, steps:"a;b;c", goal}`） |
+| POST | `/api/tasks/action` | 任务动作（`{task_id, action, ...}`，见下） |
+| POST | `/api/background` | 投后台消息（`{text, source, dedupe_key}`） |
 | GET | `/api/summary` | 精简状态（高频轮询） |
 
 ### 对话
@@ -621,8 +698,8 @@ BlackWarrior/
 ## 开发与验证
 
 ```bash
-blackwarrior selftest        # 包级自检（56 项，纯本地不依赖网络与模型）
-python tests/test_server.py  # 端到端：67 项（有 numpy 时 72 项）
+blackwarrior selftest        # 包级自检（80 项，纯本地不依赖网络与模型）
+python tests/test_server.py  # 端到端：84 项（有 numpy 时 89 项）
 ```
 
 端到端测试覆盖：REST 主干、SSE 事件流、前端 DOM id 一致性（`$('id')` 必须存在于 HTML）、
@@ -642,6 +719,10 @@ python tests/test_server.py  # 端到端：67 项（有 numpy 时 72 项）
       冷启动如实报低置信、拿不准返回 0 不硬猜）；「心智」页新增嵌入后端/置信/语料三项
 - [x] **v0.5**：**本地媒体库**（纯标准库解析 ID3/FLAC/MP4/WAV/OGG/图片头，增量扫描、
       幽灵条目自动清理）；6 个工具 + 6 个端点 + UI「媒体」视图
+- [x] **v0.6**：**任务续跑**（多步骤任务持久化、重启转暂停不自动跑、
+      收尾必须给凭据、有任务心跳加快）+ **后台消息统一入口** +
+      **资源感知与诊断 6 工具**（软件清单/网络分层诊断/端口/dev 环境）。
+      工具 39 → **55**；新增 UI「任务」视图与 4 个端点
 - [ ] v0.5：桌面壳内本地 ASR、渠道接入、技能市场（pasm-skills 互通）、多智能体协同
 - [ ] v1.0：安装包全平台产物（NSIS / DMG / AppImage）+ 增量更新
 

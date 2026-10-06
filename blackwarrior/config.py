@@ -21,7 +21,7 @@ from typing import Any, Dict, Iterator, List, Mapping, Optional
 
 from . import paths
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 #: 需要脱敏的关键词（小写匹配键名尾部）。
 SECRET_HINTS = ("key", "token", "secret", "password", "passwd", "credential")
@@ -122,6 +122,15 @@ DEFAULTS: Dict[str, Any] = {
     # 纯标准库实现，打开即有；关掉则连工具都不注册（模型看不到）。
     "media_enabled": True,
     "media_auto_scan": False,# 启动时自动扫一次（默认关：大目录首次扫要几十秒）
+
+    # ---- 任务续跑（v0.6）----
+    # 关掉则连工具都不注册，模型看不到任务概念。
+    "tasks_enabled": True,
+
+    # ---- 资源感知与诊断（v0.6）----
+    # list_software 读注册表/包管理器数据库，在个别环境可能较慢；
+    # 如不需要可关掉（关掉则工具不注册，模型看不到）。
+    "sysinfo_enabled": True,
 }
 
 #: 环境变量映射：环境变量名 -> 配置键。
@@ -221,6 +230,10 @@ class Config:
         if version < 5:
             # v4 -> v5：补齐本地媒体库配置。
             for k in ("media_enabled", "media_auto_scan"):
+                out.setdefault(k, DEFAULTS[k])
+        if version < 6:
+            # v5 -> v6：补齐任务续跑与资源感知配置。
+            for k in ("tasks_enabled", "sysinfo_enabled"):
                 out.setdefault(k, DEFAULTS[k])
         out["schema_version"] = SCHEMA_VERSION
         return out

@@ -71,6 +71,12 @@ class ContextAssembler:
         if med:
             blocks.append(med)
             injected["media"] = True
+        # v0.6：任务状态（让模型知道自己有未完成的事，
+        # 且**不能**靠自己"看起来都处理过了"就宣布完成）
+        task = self._task_block()
+        if task:
+            blocks.append(task)
+            injected["tasks"] = True
 
         # v0.3：PASM V2 十九层认知信号（情绪/预测/门控/躯体标记）
         v2 = self._pasm2_block()
@@ -220,6 +226,13 @@ class ContextAssembler:
         """预取缓存块（v0.2）。环境预热内容注入，降低逐轮重查成本。"""
         try:
             return self.ctx.prefetch.to_prompt()
+        except Exception:
+            return ""
+
+    def _task_block(self) -> str:
+        """任务状态块（v0.6）。没有活跃任务时返回空串，不占token。"""
+        try:
+            return self.ctx.tasks.to_prompt()
         except Exception:
             return ""
 

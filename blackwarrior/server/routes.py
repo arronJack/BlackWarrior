@@ -343,6 +343,75 @@ def _query(handler) -> Dict[str, Any]:
     return urllib.parse.parse_qs(parsed.query)
 
 
+# ============================================================ 任务续跑 / 后台消息（v0.6）
+
+def get_tasks(core, body, params, handler):
+    """任务列表（含进度与当前步骤）。query: state / limit。"""
+    q = _query(handler)
+    items = core.tasks.list_tasks(state=(q.get("state", [""])[0] or ""),
+                                 limit=int(q.get("limit", ["30"])[0] or 30))
+    return {"count": len(items), "items": items,
+            "active": core.tasks.active_task()}
+
+
+def post_task_create(core, body, params, handler):
+    """创建多步骤任务。body: {title, steps(分号分隔), goal}。"""
+    if not isinstance(body, dict):
+        return 400, {"error": "需要 JSON 对象"}
+    steps = str(body.get("steps") or "")
+    raw = [s.strip() for s in steps.replace("\n", ";").split(";") if s.strip()]
+    if not raw:
+        return 400, {"error": "缺少 steps（用分号分隔各步骤）"}
+    return core.tasks.create(str(body.get("title") or ""), raw,
+                             goal=str(body.get("goal") or ""))
+
+
+def post_task_action(core, body, params, handler):
+    """对某个任务执行动作。body: {task_id, action, ...}。
+
+    action 取值：current / step_done / step_failed / complete / resume /
+    skip / abandon。这是"一个端点覆盖所有动作"的设计：任务动作种类有限，
+    拆成七个端点反而让前端和文档都变复杂。
+    """
+    if not isinstance(body, dict):
+        return 400, {"error": "需要 JSON 对象"}
+    try:
+        tid = int(body.get("task_id") or 0)
+    except (TypeError, ValueError):
+        return 400, {"error": "task_id 必须是整数"}
+    if tid <= 0:
+        return 400, {"error": "缺少 task_id"}
+    act = str(body.get("action") or "").strip()
+    result = str(body.get("result") or "")
+    if act == "current":
+        return core.tasks.current_step(tid)
+    if act == "step_done":
+        return core.tasks.step_done(tid, result=result)
+    if act == "step_failed":
+        return core.tasks.step_failed(tid, error=result or
+                                     str(body.get("error") or ""))
+    if act == "complete":
+        return core.tasks.complete(tid, evidence=str(body.get("evidence") or ""))
+    if act == "resume":
+        return core.tasks.resume(tid)
+    if act == "skip":
+        return core.tasks.skip_step(tid, reason=result)
+    if act == "abandon":
+        return core.tasks.abandon(tid, reason=result)
+    return 400, {"error": f"未知 action：{act}",
+                 "allowed": ["current", "step_done", "step_failed",
+                             "complete", "resume", "skip", "abandon"]}
+
+
+def post_background(core, body, params, handler):
+    """投一条后台消息进主循环（渠道/定时任务的统一入口）。"""
+    if not isinstance(body, dict) or not body.get("text"):
+        return 400, {"error": "缺少 text"}
+    return core.push_background(
+        str(body.get("text")), source=str(body.get("source") or "api"),
+        dedupe_key=str(body.get("dedupe_key") or ""))
+
+
 # ============================================================ 本地媒体库（v0.5）
 
 def get_media(core, body, params, handler):
@@ -619,6 +688,12 @@ def build_routes() -> Dict[Tuple[str, str], Callable[..., Any]]:
         ("POST", "/api/media/roots"): post_media_root,
         ("DELETE", "/api/media/roots"): delete_media_root,
         ("POST", "/api/media/scan"): post_media_scan,
+
+        # ---- v0.6：任务续跑 / 后台消息 ----
+        ("GET", "/api/tasks"): get_tasks,
+        ("POST", "/api/tasks"): post_task_create,
+        ("POST", "/api/tasks/action"): post_task_action,
+        ("POST", "/api/background"): post_background,
 
         # ---- v0.3：PASM V2 十九层心智 ----
         ("GET", "/api/mind"): get_mind,

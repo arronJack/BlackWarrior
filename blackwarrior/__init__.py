@@ -261,6 +261,28 @@ def selftest() -> bool:
         except Exception:
             pass
 
+    # 8.6 任务续跑（v0.6）
+    from .runtime.tasks import selftest as _task_self
+    check(_task_self(), "任务续跑引擎（建/推进/受阻/恢复/收尾需证据/重启转暂停）")
+    from .tools.builtin import tasks as _ttools
+    from .tools.builtin import sysinfo as _stools
+    from .tools.registry import ToolRegistry as _TRCls
+    _tr = _TRCls()
+    class _TC:
+        pass
+    _tc = _TC()
+    _tc.store = st
+    _tc.config = cfg
+    from .runtime.tasks import TaskEngine as _TE
+    _tc.tasks = _TE(st, cfg)
+    _tc.push_background = lambda text, source="system": {"ok": True}
+    check(bool(_ttools.register(_tr, _tc)), "任务工具已注册")
+    _sr = _TRCls()
+    _tc2 = _TC()
+    _tc2.store = st
+    _tc2.config = cfg
+    check(bool(_stools.register(_sr, _tc2)), "资源诊断工具已注册")
+
     # 9. 本地媒体库（v0.5）
     # 媒体库是"零依赖可用"能力的代表：实测本机 mutagen/Pillow 全无，
     # 所以内置自己解析文件头。这组断言保证它不会因缺依赖而整体消失。

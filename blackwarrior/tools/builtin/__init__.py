@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from typing import Any, List
 
-from . import (ambient, filesystem, media, memory, profile, shell, system,
-               web)
+from . import (ambient, filesystem, media, memory, profile, shell, sysinfo,
+               system, tasks, web)
 
 
 def register_builtin(reg: Any, ctx: Any, config: Any = None) -> List[str]:
@@ -38,10 +38,16 @@ def register_builtin(reg: Any, ctx: Any, config: Any = None) -> List[str]:
     ambient.register(reg, ctx)         # v0.3：工具自发现/本机资源/线索/审计
     if _enabled("media_enabled", True):
         media.register(reg, ctx)       # v0.5：本地媒体库
+    if _enabled("tasks_enabled", True):
+        tasks.register(reg, ctx)       # v0.6：任务续跑 + 后台消息
+    if _enabled("sysinfo_enabled", True):
+        sysinfo.register(reg, ctx)     # v0.6：软件清单/网络诊断/端口/dev 环境
+    if _enabled("sysinfo_enabled", True):
+        sysinfo.register(reg, ctx)     # v0.6：软件清单/网络诊断/端口/dev 环境
 
     names = [n for n in reg.names() if n not in before]
     return names
 
 
 __all__ = ["register_builtin", "filesystem", "shell", "web", "memory",
-           "system", "profile", "ambient", "media"]
+           "system", "profile", "ambient", "media", "tasks", "sysinfo"]

@@ -82,6 +82,7 @@
     bindVoice();
     bindPanorama();
     bindMedia();
+    bindTasks();
     bindMind();
 
     // 先拿配置（语音开关来自它），再连事件流
@@ -123,6 +124,7 @@
         if (v === 'settings') { loadSettings(); }
         if (v === 'panorama') { loadPanorama(); }
         if (v === 'media') { loadMedia(); }
+        if (v === 'tasks') { loadTasks(); }
         if (v === 'mind') { loadMind(); }
       });
     });
@@ -1248,6 +1250,101 @@
 
       $('mindJson').textContent = JSON.stringify(st, null, 2);
     }).catch(() => {});
+  }
+
+  // ============================================================ 任务（v0.6）
+
+  let _taskState = '';
+
+  const TASK_STATE_CN = {
+    active: '进行中', paused: '已暂停', blocked: '受阻',
+    done: '已完成', failed: '失败', abandoned: '已放弃'
+  };
+
+  function _taskRow(t) {
+    const st = TASK_STATE_CN[t.state] || t.state;
+    const cur = t.current ? ('当前：' + t.current.title) : '所有步骤已执行，待收尾';
+    const pct = Math.round((t.progress || 0) * 100);
+    return '<div class="pf-item" data-tid="' + t.id + '">'
+      + '<b>#' + t.id + ' ' + (t.title || '') + '</b>'
+      + '<span class="c">' + st + ' · ' + t.done_steps + '/' + t.total_steps
+      + '（' + pct + '%） · ' + cur + '</span>'
+      + '<span class="c"><a href="#" data-act="resume">恢复</a> · '
+      + '<a href="#" data-act="step_done">完成这步</a> · '
+      + '<a href="#" data-act="complete">收尾</a> · '
+      + '<a href="#" data-act="abandon">放弃</a></span></div>';
+  }
+
+  function _bindTaskActions(box) {
+    if (!box) { return; }
+    box.querySelectorAll('[data-tid]').forEach(function (el) {
+      const tid = Number(el.getAttribute('data-tid'));
+      el.querySelectorAll('[data-act]').forEach(function (a) {
+        a.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          const act = a.getAttribute('data-act');
+          let extra = {};
+          if (act === 'complete') {
+            // 完成必须给证据 —— 这里用 prompt 收一句，不让用户空着点过去
+            const ev2 = window.prompt('完成任务需要说明凭据：你实际做了什么？');
+            if (!ev2) { return; }
+            extra = { evidence: ev2 };
+          } else if (act === 'step_done') {
+            const r2 = window.prompt('这一步做了什么？（可留空）') || '';
+            extra = { result: r2 };
+          }
+          api.taskAction(tid, act, extra).then(function (r) {
+            if (r && r.ok === false) {
+              toast('失败：' + ((r && (r.reason || r.error)) || '未知'), true);
+            } else {
+              toast('已' + ({ resume: '恢复', step_done: '推进',
+                              complete: '收尾', abandon: '放弃' }[act] || act));
+            }
+            loadTasks();
+          }).catch(function (e) { toast(e.message, true); });
+        });
+      });
+    });
+  }
+
+  async function loadTasks() {
+    const data = await api.tasks(_taskState).catch(function () { return null; });
+    const ab = $('taskActive');
+    if (ab) {
+      const t = data && data.active;
+      if (!t) {
+        ab.innerHTML = '<div class="dim">当前没有进行中的任务。'
+          + '说一句多步骤目标（例如「把这批文件整理好」）就会建任务。</div>';
+      } else {
+        ab.innerHTML = _taskRow(t);
+        _bindTaskActions(ab);
+      }
+    }
+    const lb = $('taskList');
+    if (lb) {
+      const items = (data && data.items) || [];
+      if (!items.length) {
+        lb.innerHTML = '<div class="dim">没有任务</div>';
+      } else {
+        lb.innerHTML = items.map(_taskRow).join('');
+        _bindTaskActions(lb);
+      }
+    }
+  }
+
+  function bindTasks() {
+    const rf = $('btnTaskRefresh');
+    if (rf) { rf.addEventListener('click', function () { loadTasks(); }); }
+    document.querySelectorAll('.task-tab').forEach(function (b) {
+      b.addEventListener('click', function () {
+        document.querySelectorAll('.task-tab').forEach(function (x) {
+          x.classList.remove('on');
+        });
+        b.classList.add('on');
+        _taskState = b.getAttribute('data-state') || '';
+        loadTasks();
+      });
+    });
   }
 
   // ============================================================ 媒体库（v0.5）

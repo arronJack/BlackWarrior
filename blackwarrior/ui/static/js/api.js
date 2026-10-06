@@ -97,6 +97,20 @@
                               + encodeURIComponent(path)),
     scanMedia:  ()        => api.post('/api/media/scan', {}),
 
+    // ---- 任务续跑（v0.6）----
+    tasks:      (state)   => api.get('/api/tasks?state='
+                                    + encodeURIComponent(state || '')),
+    createTask: (title, steps, goal) =>
+                  api.post('/api/tasks', { title: title, steps: steps,
+                                          goal: goal || '' }),
+    taskAction: (taskId, action, extra) =>
+                  api.post('/api/tasks/action',
+                           Object.assign({ task_id: taskId, action: action },
+                                         extra || {})),
+    pushBg:     (text, source) =>
+                  api.post('/api/background', { text: text,
+                                              source: source || 'ui' }),
+
     // ---- PASM V2 十九层心智（v0.3）
     mind:     ()          => api.get('/api/mind'),
     mindLayers:()         => api.get('/api/mind/layers'),

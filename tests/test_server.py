@@ -341,6 +341,55 @@ def main() -> int:
               not any(x.get("path") == _md for x in roots2.get("items", [])),
               str(roots2)[:100])
 
+        print("== 5c. 任务续跑 / 后台消息（v0.6）==")
+        st, tk = get(base + "/api/tasks")
+        check("任务列表可读", st == 200 and "items" in tk, str(tk)[:120])
+        st, r = post(base + "/api/tasks",
+                     {"title": "端到端任务", "steps": "第一步;第二步"}, allow_error=True)
+        check("建任务", st == 200 and r.get("ok") is True, str(r)[:120])
+        _tid = int(r.get("task_id") or 0)
+        st, r = post(base + "/api/tasks", {"title": "x"}, allow_error=True)
+        check("缺 steps 被拒", st == 400 or r.get("ok") is not True, str(r)[:100])
+        st, r = post(base + "/api/tasks/action",
+                     {"task_id": _tid, "action": "current"}, allow_error=True)
+        check("取当前步", st == 200 and r.get("title") == "第一步", str(r)[:120])
+        st, r = post(base + "/api/tasks/action",
+                     {"task_id": _tid, "action": "step_done", "result": "做完了"},
+                     allow_error=True)
+        check("推进到下一步", st == 200 and (r.get("next") or {}).get("title") == "第二步",
+              str(r)[:120])
+        st, r = post(base + "/api/tasks/action",
+                     {"task_id": _tid, "action": "complete", "evidence": ""},
+                     allow_error=True)
+        check("★无证据不许收尾", st == 200 and r.get("ok") is False, str(r)[:120])
+        st, r = post(base + "/api/tasks/action",
+                     {"task_id": _tid, "action": "complete", "evidence": "两步都做完了"},
+                     allow_error=True)
+        check("带证据可收尾", st == 200 and r.get("ok") is True, str(r)[:120])
+        st, r = post(base + "/api/tasks/action",
+                     {"task_id": _tid, "action": "resume"}, allow_error=True)
+        check("终态不可恢复", st == 200 and r.get("ok") is False, str(r)[:120])
+        st, r = post(base + "/api/tasks/action",
+                     {"task_id": _tid, "action": "no_such_action"}, allow_error=True)
+        check("未知 action 被拒且给出可选值",
+              st == 400 and "allowed" in r, str(r)[:120])
+        st, r = post(base + "/api/background",
+                     {"text": "端到端后台消息", "source": "test"},
+                     allow_error=True)
+        check("后台消息入队", st == 200 and r.get("queued") is True, str(r)[:120])
+
+        print("== 5d. 资源感知与诊断（v0.6）==")
+        st, r = get(base + "/api/tools")
+        names = [x.get("name") for x in (r.get("items") or [])] \
+            if isinstance(r, dict) else []
+        if not names:
+            st, r = get(base + "/api/tools")
+            names = [x.get("name") for x in (r or {}).get("tools", [])]
+        for want in ("list_software", "find_command", "diagnose_network",
+                     "check_port", "dev_env", "task_create", "task_complete"):
+            check("工具 " + want + " 已注册", want in names,
+                  "共 %d 个工具" % len(names))
+
         print("== 6. 设置与脱敏 ==")
         st, cfg = get(base + "/api/settings")
         check("settings", st == 200)

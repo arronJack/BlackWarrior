@@ -26,6 +26,7 @@ from .runtime import (
     Continuum,
     Message,
     MessageQueue,
+    PRIORITY_BACKGROUND,
     PRIORITY_USER,
     Scheduler,
 )
@@ -92,6 +93,10 @@ class WarriorCore:
         # ---- 本地媒体库（v0.5）----
         from .media.library import MediaLibrary
         self.media = MediaLibrary(self.store, self.config)
+
+        # ---- 任务续跑引擎（v0.6）----
+        from .runtime.tasks import TaskEngine
+        self.tasks = TaskEngine(self.store, self.config)
 
         # ---- 主循环 ----
         self.continuum = Continuum(
@@ -169,6 +174,10 @@ class WarriorCore:
         self._auto_started = True
         self.continuum.start(run_immediate=True)
         emit("core_started", {"version": version_info()})
+        # 恢复上次遗留的任务（转 paused，不自动继续）
+        rec = self.recover_tasks()
+        if rec.get("recovered"):
+            emit("notice", {"message": rec.get("note", "")})
 
     def stop(self) -> None:
         """停止主循环。"""
@@ -205,6 +214,43 @@ class WarriorCore:
             text, priority=priority, from_id=from_id, channel=channel,
             meta=meta, dedupe_key=dedupe_key,
         )
+
+    # ------- 后台消息（v0.6）---------------------------------------
+
+    def push_background(self, text: str, *, source: str = "system",
+                        priority: int = PRIORITY_BACKGROUND,
+                        dedupe_key: str = "") -> Dict[str, Any]:
+        """投一条**后台消息**进队列（不打断用户对话）。
+
+        这是"外部世界 → 黑武士"的统一入口：渠道接入（微信/Discord/钉钉）、
+        定时任务、任务续跑、Webhook 回调，全都走这一条路。好处是
+        外部消息与用户消息**共用同一个主循环**（同一份记忆、同一套认知状态），
+        不会各自为政。
+
+        优先级低于用户消息，所以用户正在说话时后台消息会排队而不是插嘴。
+        """
+        if not str(text or "").strip():
+            return {"ok": False, "reason": "消息内容为空"}
+        msg = self.continuum.push(
+            text, priority=priority, from_id=str(source or "system"),
+            channel="background", dedupe_key=dedupe_key)
+        if msg is None:
+            # 被去重拦截也算成功：避免同一来源的重复推送刷屏
+            return {"ok": True, "queued": False,
+                    "reason": "被去重拦截（相同 dedupe_key 已在队列中）"}
+        from .events import emit
+
+        emit("background_pushed", {"from": msg.from_id, "chars": len(text)})
+        return {"ok": True, "queued": True, "priority": msg.priority,
+                "lane": msg.lane, "from": msg.from_id}
+
+    def recover_tasks(self) -> Dict[str, Any]:
+        """启动时恢复任务（把上次遗留的 active 转为paused）。"""
+        try:
+            return self.tasks.recover()
+        except Exception as ex:
+            return {"recovered": 0,
+                    "error": f"{type(ex).__name__}: {ex}"}
 
     def ask(self, text: str, *, timeout: float = 120.0,
             channel: str = "ui") -> TurnResult:
@@ -297,9 +343,16 @@ class WarriorCore:
 
     def _tick_scale(self) -> float:
         try:
-            return float(self.affect.suggest_tick_scale())
+            base = float(self.affect.suggest_tick_scale())
         except Exception:
-            return 1.0
+            base = 1.0
+        # 有活跃任务时整体再快一档（v0.6）：多步骤目标要在合理时间内
+        # 推进完，不能等下一个空闲周期。任务引擎给的系数是"建议"，
+        # 与情绪给的系数相乘 —— 两者都只是节奏，不改变任何行为语义。
+        try:
+            return float(self.tasks.tick_scale_hint(base))
+        except Exception:
+            return base
 
     # ------- 状态 -------------------------------------------------
 
