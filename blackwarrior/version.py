@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.6.1"
+__version__ = "0.6.2"
 
 #: 代号。黑武士 = BlackWarrior，内部简称 BW。
 CODENAME = "BlackWarrior"

@@ -412,7 +412,32 @@ def post_background(core, body, params, handler):
         return 400, {"error": "缺少 text"}
     return core.push_background(
         str(body.get("text")), source=str(body.get("source") or "api"),
-        dedupe_key=str(body.get("dedupe_key") or ""))
+        dedupe_key=str(body.get("dedupe_key") or ""),
+        channel=str(body.get("channel") or "background"))
+
+
+# ============================================================ 渠道桥（v0.6.2）
+
+def post_channel_inbound(core, body, params, handler):
+    """外部渠道消息入口（微信/Discord/Webhook 回调的通用接收端）。
+
+    body: {name, token, text, from_id?}。校验失败如实拒绝（不猜）。
+    """
+    if not isinstance(body, dict):
+        return 400, {"error": "需要 JSON 对象"}
+    r = core.channels.inbound(
+        name=str(body.get("name") or ""),
+        token=str(body.get("token") or ""),
+        text=str(body.get("text") or body.get("message") or ""),
+        from_id=str(body.get("from_id") or ""))
+    if not r.get("ok"):
+        return 401, r
+    return r
+
+
+def get_channel_list(core, body, params, handler):
+    """渠道清单（令牌打码）+ 投递计数。"""
+    return core.channels.list_channels()
 
 
 # ============================================================ 本地媒体库（v0.5）
@@ -660,6 +685,9 @@ def build_routes() -> Dict[Tuple[str, str], Callable[..., Any]]:
         ("GET", "/api/cognition"): get_cognition,
         ("POST", "/api/cognition/consolidate"): post_consolidate,
         ("GET", "/api/cognition/mood"): get_mood_curve,
+
+        ("POST", "/api/channel/inbound"): post_channel_inbound,
+        ("GET", "/api/channel/list"): get_channel_list,
 
         ("GET", "/api/settings"): get_settings,
         ("POST", "/api/settings"): post_settings,

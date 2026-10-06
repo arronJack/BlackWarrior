@@ -168,6 +168,18 @@ class TurnRunner:
             # 再单独发一条 error，前端可据此显示醒目的失败提示
             emit("error", {"turn_id": turn_id, "where": "llm",
                            "message": result.error})
+
+        # 7) 渠道回投（v0.6.2）：本回合若来自外部渠道（channel:xxx），
+        #    把最终回复抛给渠道桥转投 webhook。失败/中止的回合不投——
+        #    宁可让渠道侧超时重试，也不把错误文案当回答发出去。
+        try:
+            ch = (msg.channel if msg is not None else "ui") or "ui"
+            if (ch.startswith("channel:") and (result.text or "").strip()
+                    and not result.error and not result.aborted):
+                emit("channel_out", {"turn_id": turn_id, "channel": ch,
+                                     "text": result.text})
+        except Exception:
+            pass
         return result
 
     # ------- 生成循环 ---------------------------------------------

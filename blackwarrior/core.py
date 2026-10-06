@@ -98,6 +98,10 @@ class WarriorCore:
         from .runtime.tasks import TaskEngine
         self.tasks = TaskEngine(self.store, self.config)
 
+        # ---- 渠道桥（v0.6.2）----
+        from .runtime.channels import ChannelBridge
+        self.channels = ChannelBridge(self)
+
         # ---- 主循环 ----
         self.continuum = Continuum(
             run_turn=self._run_turn,
@@ -174,6 +178,11 @@ class WarriorCore:
         self._auto_started = True
         self.continuum.start(run_immediate=True)
         emit("core_started", {"version": version_info()})
+        # 渠道出站转发线程随主循环起停（v0.6.2）
+        try:
+            self.channels.start()
+        except Exception:
+            pass
         # 恢复上次遗留的任务（转 paused，不自动继续）
         rec = self.recover_tasks()
         if rec.get("recovered"):
@@ -182,6 +191,10 @@ class WarriorCore:
     def stop(self) -> None:
         """停止主循环。"""
         self.continuum.stop()
+        try:
+            self.channels.stop()
+        except Exception:
+            pass
         self._auto_started = False
 
     def close(self) -> None:
@@ -219,7 +232,8 @@ class WarriorCore:
 
     def push_background(self, text: str, *, source: str = "system",
                         priority: int = PRIORITY_BACKGROUND,
-                        dedupe_key: str = "") -> Dict[str, Any]:
+                        dedupe_key: str = "",
+                        channel: str = "background") -> Dict[str, Any]:
         """投一条**后台消息**进队列（不打断用户对话）。
 
         这是"外部世界 → 黑武士"的统一入口：渠道接入（微信/Discord/钉钉）、
@@ -233,7 +247,7 @@ class WarriorCore:
             return {"ok": False, "reason": "消息内容为空"}
         msg = self.continuum.push(
             text, priority=priority, from_id=str(source or "system"),
-            channel="background", dedupe_key=dedupe_key)
+            channel=str(channel or "background"), dedupe_key=dedupe_key)
         if msg is None:
             # 被去重拦截也算成功：避免同一来源的重复推送刷屏
             return {"ok": True, "queued": False,
@@ -439,6 +453,8 @@ class WarriorCore:
             "panorama": panorama,
             "pasm2": self.pasm2.status() if self.pasm2 else {},
             "tasks": tasks_block,
+            "channels": (self.channels.stats()
+                         if getattr(self, "channels", None) else {}),
         }
 
     def summary(self) -> Dict[str, Any]:
