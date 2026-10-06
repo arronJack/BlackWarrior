@@ -152,6 +152,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="blackwarrior",
         description="黑武士 BlackWarrior —— 带真实认知内核的桌面 AI Agent")
+    # 版本号直出，不必先装包就能查（README 与 `pip show` 都指向这里）
+    p.add_argument("-V", "--version", action="store_true",
+                   help="显示版本与协议后退出")
     sub = p.add_subparsers(dest="cmd")
 
     s = sub.add_parser("serve", help="启动本地服务")
@@ -181,6 +184,12 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if getattr(args, "version", False):
+        from .version import banner, version_info
+        print(banner())
+        info = version_info()
+        print(f"Python {info['python']}｜内核档位见 `blackwarrior status`")
+        return 0
     if not getattr(args, "func", None):
         parser.print_help()
         return 0

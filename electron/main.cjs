@@ -107,17 +107,31 @@ async function resolvePython() {
   return null;
 }
 
-/** 打包态如果没有可用解释器，退而求其次用 zipapp / 源码目录直跑。 */
+/**
+ * 决定怎么把内核拉起来。
+ *
+ * 打包态有两种可能的落点，**必须真的区分开**：
+ *   1. `resources/app/` 里带着源码（目录或 zipapp）→ 需要把该目录加进 PYTHONPATH；
+ *   2. 解释器是内置的、blackwarrior 已装进 site-packages → 直接 `-m` 即可。
+ *
+ * 之前这里两个分支返回一模一样的参数，注释还写着"退而求其次用 zipapp 直跑"，
+ * 实际上什么都没做——真到了"包里没带源码"的机器上，只会看到一个
+ * `No module named blackwarrior` 的原始报错，用户完全不知道该怎么办。
+ */
 function pythonArgs() {
   if (app.isPackaged) {
     const appdir = path.join(process.resourcesPath, 'app');
     if (fs.existsSync(path.join(appdir, 'blackwarrior'))) {
-      return ['-m', 'blackwarrior.cli'];
+      // 源码在 resources/app → 显式告知解释器去哪找包
+      return { args: ['-m', 'blackwarrior.cli'], extraPath: appdir };
     }
-    return ['-m', 'blackwarrior.cli'];
+    // 没带源码：只能靠解释器里已安装的包。启动前先验一次，
+    // 免得等到 spawn 失败才报一句让人摸不着头脑的模块错误。
+    return { args: ['-m', 'blackwarrior.cli'], extraPath: null,
+             warn: '安装包内未找到 resources/app 源码，'
+                 + '将依赖系统 Python 中已安装的 blackwarrior 包。' };
   }
-  // 开发态：源码根目录直跑
-  return ['-m', 'blackwarrior.cli'];
+  return { args: ['-m', 'blackwarrior.cli'], extraPath: PROJECT_ROOT, warn: null };
 }
 
 // ---------------------------------------------------------- 启动内核
@@ -130,14 +144,25 @@ async function startKernel() {
       '可设置环境变量 BLACKWARRIOR_PYTHON 指向解释器路径。');
   }
 
-  const args = pythonArgs().concat(['serve', '--host', '127.0.0.1']);
+  const spec = pythonArgs();
+  if (spec.warn) { log('[kernel] ' + spec.warn); }
+  const args = spec.args.concat(['serve', '--host', '127.0.0.1']);
   log('[kernel] 启动:', py.exe, args.join(' '));
+
+  // 打包态源码不在 site-packages 时，靠 PYTHONPATH 把它指到 resources/app；
+  // 已有 PYTHONPATH 时**追加**而不是覆盖（用户可能自己设了别的路径）。
+  const envPath = spec.extraPath
+    ? (process.env.PYTHONPATH
+        ? process.env.PYTHONPATH + ';' + spec.extraPath
+        : spec.extraPath)
+    : process.env.PYTHONPATH;
 
   kernel = spawn(py.exe, args, {
     cwd: IS_DEV ? PROJECT_ROOT : process.resourcesPath,
     env: Object.assign({}, process.env, {
       PYTHONUNBUFFERED: '1',
       PYTHONIOENCODING: 'utf-8',
+      PYTHONPATH: envPath,
       BW_SHELL: 'electron'
     }),
     windowsHide: true,
