@@ -748,10 +748,6 @@ python tests/test_server.py  # 端到端：84 项（有 numpy 时 89 项）
 
 - 渠道在 `config.json` 的 `channels[]` 声明：`webhook`（通用 JSON）/ `wecom_bot`（企业微信群机器人）/ `serverchan`（Server酱·微信推送）/ `pushplus`（PushPlus·微信推送）/ `dingtalk_bot`（钉钉机器人+加签）；支持回调与轮询两种入站。详见「渠道桥接」章节。
 
-## 渠道桥接（外部世界 ⇄ 黑武士）
-
-- 渠道在 `config.json` 的 `channels[]` 声明：`webhook`（通用 JSON）/ `wecom_bot`（企业微信群机器人）/ `serverchan`（Server酱·微信推送）/ `pushplus`（PushPlus·微信推送）/ `dingtalk_bot`（钉钉机器人+加签）；支持回调与轮询两种入站。详见「渠道桥接」章节。
-
 ## Roadmap
 
 - [x] **v0.1**：PASM 认知内核 + Electron 壳 + 五视图 + 工具/记忆/提醒/语音
