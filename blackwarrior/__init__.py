@@ -238,6 +238,21 @@ def selftest() -> bool:
     except Exception as ex:
         print(f"  ! 无法校验 README 安装命令：{type(ex).__name__}")
 
+    # 9. 本地媒体库（v0.5）
+    # 媒体库是"零依赖可用"能力的代表：实测本机 mutagen/Pillow 全无，
+    # 所以内置自己解析文件头。这组断言保证它不会因缺依赖而整体消失。
+    from .media.library import MediaLibrary as _ML
+    from .media.library import selftest as _ml_self
+    check(_ml_self(), "媒体库内置解析（MP3/FLAC/WAV/PNG + 增量扫描）")
+    _mlib = _ML(st, cfg)
+    check(_mlib.add_root("/definitely/not/exist")["ok"] is False,
+          "媒体目录不存在时如实拒绝（不假装登记成功）")
+    _mstat = _mlib.stats()
+    check(_mstat.get("available") is True,
+          "媒体库状态可申报（缺 mutagen/Pillow 也不会整体消失）")
+    check(_mlib.to_prompt() == "",
+          "媒体库为空时不注入上下文（不占 token）")
+
     print("-" * 58)
     print("自检结果：" + ("通过" if ok else "失败"))
     return ok

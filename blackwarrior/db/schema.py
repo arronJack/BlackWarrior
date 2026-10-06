@@ -19,7 +19,7 @@
 
 from __future__ import annotations
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 TABLES: "list[str]" = [
     # ---- 对话 ----
@@ -236,6 +236,45 @@ TABLES: "list[str]" = [
         INSERT INTO memories_fts(rowid, title, brief, tags)
         VALUES (new.id, new.title, new.brief, new.tags);
     END
+    """,
+
+    # ---- 本地媒体库（v0.5）----
+    # 登记的媒体根目录。媒体条目本身另表存，两者分开是因为
+    # 根目录属于「用户配置」（重置数据时不该丢），条目属于「扫描产物」（该清）。
+    """
+    CREATE TABLE IF NOT EXISTS media_roots (
+        path       TEXT PRIMARY KEY,
+        recursive  INTEGER NOT NULL DEFAULT 1,
+        added_at   REAL NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS media_items (
+        path        TEXT PRIMARY KEY,
+        name        TEXT NOT NULL,
+        category    TEXT NOT NULL,
+        title       TEXT,
+        artist      TEXT,
+        album       TEXT,
+        year        TEXT,
+        duration    REAL,
+        size        INTEGER,
+        mtime       REAL,
+        sample_rate INTEGER,
+        bit_depth   INTEGER,
+        channels    INTEGER,
+        width       INTEGER,
+        height      INTEGER,
+        reader      TEXT,
+        indexed_at  REAL NOT NULL
+    )
+    """,
+    # 索引只服务两类高频查询：按分类列条目、按时长排（音乐库最常用）
+    """
+    CREATE INDEX IF NOT EXISTS idx_media_cat ON media_items(category)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_media_dur ON media_items(duration DESC)
     """,
 ]
 

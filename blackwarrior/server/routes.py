@@ -338,8 +338,60 @@ def _query(handler) -> Dict[str, Any]:
     return urllib.parse.parse_qs(parsed.query)
 
 
-# ============================================================ 用户画像 / 面板 / 预取（v0.2）
+# ============================================================ 本地媒体库（v0.5）
 
+def get_media(core, body, params, handler):
+    """媒体库总览：条目数/分类分布/总时长/已登记目录。"""
+    stats = core.media.stats()
+    if not stats.get("available"):
+        return 503, stats
+    return stats
+
+
+def get_media_items(core, body, params, handler):
+    """列媒体条目。query 参数：category / q / limit。"""
+    # ★ 路由的 ``params`` 只装**路径占位符**（``{kind}``），
+    #   query string 必须走 _query(handler) —— 直接 params.get("category")
+    #   永远拿不到值（v0.5 接媒体时踩过，表现为 DELETE 恒400）。
+    q = _query(handler)
+    items = core.media.list(
+        category=(q.get("category", [""])[0] or ""),
+        query=(q.get("q", [""])[0] or ""),
+        limit=int(q.get("limit", ["50"])[0] or 50))
+    return {"count": len(items), "items": items}
+
+
+def get_media_roots(core, body, params, handler):
+    """已登记的媒体目录（不删磁盘文件，只是不再索引）。"""
+    items = core.store.list_media_roots()
+    return {"count": len(items), "items": items}
+
+
+def post_media_root(core, body, params, handler):
+    """登记一个媒体目录（不立即扫描）。"""
+    if not isinstance(body, dict) or not body.get("path"):
+        return 400, {"error": "缺少 path"}
+    return core.media.add_root(str(body.get("path")),
+                              bool(body.get("recursive", True)))
+
+
+def delete_media_root(core, body, params, handler):
+    """取消登记一个媒体目录（不删磁盘文件）。"""
+    # query string 走 _query(handler)；params 只装路径占位符
+    path = (_query(handler).get("path", [""])[0]
+            or (body or {}).get("path") or "")
+    if not path:
+        return 400, {"error": "缺少 path"}
+    return core.media.remove_root(str(path))
+
+
+def post_media_scan(core, body, params, handler):
+    """扫描已登记目录并更新索引（默认增量）。"""
+    full = bool((body or {}).get("full"))
+    return core.media.scan(full=full)
+
+
+# ============================================================ 用户画像 / 面板 / 预取（v0.2）
 def get_profile(core, body, params, handler):
     """已了解的用户画像（带置信度与依据）。"""
     data = core.profile.get() or {}
@@ -554,6 +606,14 @@ def build_routes() -> Dict[Tuple[str, str], Callable[..., Any]]:
         ("GET", "/api/prefetch"): get_prefetch,
         ("POST", "/api/prefetch"): post_prefetch,
         ("DELETE", "/api/prefetch"): delete_prefetch,
+
+        # ---- v0.5：本地媒体库 ----
+        ("GET", "/api/media"): get_media,
+        ("GET", "/api/media/items"): get_media_items,
+        ("GET", "/api/media/roots"): get_media_roots,
+        ("POST", "/api/media/roots"): post_media_root,
+        ("DELETE", "/api/media/roots"): delete_media_root,
+        ("POST", "/api/media/scan"): post_media_scan,
 
         # ---- v0.3：PASM V2 十九层心智 ----
         ("GET", "/api/mind"): get_mind,

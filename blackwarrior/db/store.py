@@ -9,9 +9,11 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import threading
 import time
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from . import schema
@@ -19,6 +21,32 @@ from . import schema
 
 def _now() -> float:
     return time.time()
+
+
+def _opt(value: Any, limit: int = 0) -> Any:
+    """可选文本字段：空值统一存 **None**（SQL NULL），不存空串。
+
+    媒体表里有大量"该字段本来就没有"的情况（无标签的 mp3 读不出专辑）。
+    存空串会让 ``artist IS NULL`` 这种查询失真，也让"有没有读到标签"
+    这件事变得不可查——NULL 才是"未知"的诚实表示。
+    """
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    return s[:limit] if limit else s
+
+
+def _num(value: Any) -> Any:
+    """可选数值字段：非有限数（NaN/inf）也当 None。"""
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    if f != f or f in (float("inf"), float("-inf")):
+        return None
+    return f
 
 
 def _dump(value: Any) -> str:
@@ -269,9 +297,12 @@ class Store:
     #: 运行数据表（``meta`` 与 ``memories_fts`` 刻意不在内：
     #: 前者存 schema_version 等应用状态不能被"重置"，后者是虚拟索引，
     #: 随 memories 的触发器自动同步，手动删会失配）。
+    #: "重置数据"会清空的表。``media_roots`` **刻意不在此列**——
+    #: 它是用户配置（登记了哪些媒体目录），清掉等于逼用户重登记一遍；
+    #: 而 ``media_items`` 是扫描产物，重置就该清（重扫一次即可）。
     DATA_TABLES: tuple = ("conversations", "memories", "actions", "reminders",
                           "tasks", "ui_signals", "clues", "memory_audit",
-                          "user_profile", "prefetch_cache")
+                          "user_profile", "prefetch_cache", "media_items")
 
     def reset_all(self) -> Dict[str, int]:
         """清空运行数据（设置页的"重置"按钮）。
@@ -546,6 +577,136 @@ class Store:
         except Exception:
             # 审计写失败不能影响主流程（表可能还不存在）
             pass
+
+    # ------- 本地媒体库（v0.5）-----------------------------------
+
+    def add_media_root(self, path: str, recursive: bool = True) -> None:
+        self.execute(
+            "INSERT OR REPLACE INTO media_roots(path, recursive, added_at)"
+            " VALUES(?,?,?)", (str(path), 1 if recursive else 0, _now()))
+
+    def remove_media_root(self, path: str) -> bool:
+        cur = self.execute("DELETE FROM media_roots WHERE path=?",
+                           (str(path),))
+        return bool(cur.rowcount)
+
+    def list_media_roots(self) -> List[Dict[str, Any]]:
+        return self.query("SELECT * FROM media_roots ORDER BY added_at")
+
+    def upsert_media(self, info: Dict[str, Any]) -> bool:
+        """写入/更新一条媒体条目。``info`` 来自 media.library.probe()。
+
+        返回 True 表示这是**新增**（用于给扫描器统计），False 表示更新。
+        字段为 None 的原样存 NULL —— 不拿空串或 0 冒充"有值"。
+        """
+        path = str(info.get("path") or "")
+        if not path:
+            return False
+        existed = self.query_one(
+            "SELECT 1 AS x FROM media_items WHERE path=?", (path,)) is not None
+        self.execute(
+            "INSERT OR REPLACE INTO media_items(path, name, category, title,"
+            " artist, album, year, duration, size, mtime, sample_rate,"
+            " bit_depth, channels, width, height, reader, indexed_at)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (path, str(info.get("name") or "")[:200],
+             str(info.get("category") or "other"),
+             _opt(info.get("title"), 200), _opt(info.get("artist"), 200),
+             _opt(info.get("album"), 200), _opt(info.get("year"), 20),
+             _num(info.get("duration")), int(info.get("size") or 0),
+             float(info.get("mtime") or 0),
+             int(info["sample_rate"]) if info.get("sample_rate") else None,
+             int(info["bit_depth"]) if info.get("bit_depth") else None,
+             int(info["channels"]) if info.get("channels") else None,
+             int(info["width"]) if info.get("width") else None,
+             int(info["height"]) if info.get("height") else None,
+             str(info.get("reader") or "builtin")[:20], _now()))
+        return not existed
+
+    def list_media(self, category: Optional[str] = None,
+                   query: Optional[str] = None, limit: int = 50,
+                   by_duration: bool = False) -> List[Dict[str, Any]]:
+        """列媒体条目。``by_duration`` 时按时长降序（NULL 排最后）。"""
+        # 条件用列表拼，不能写成 "WHERE a?" + " AND b?" ——
+        # 只有 b 没有 a 时会拼出 "SELECT ... AND b?"，SQLite 直接报语法错。
+        where: List[str] = []
+        params: List[Any] = []
+        if category:
+            where.append("category=?")
+            params.append(str(category))
+        if query:
+            where.append("(title LIKE ? OR artist LIKE ? OR album LIKE ?"
+                         " OR name LIKE ?)")
+            like = f"%{query}%"
+            params.extend([like, like, like, like])
+        sql = "SELECT * FROM media_items"
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += (" ORDER BY (duration IS NULL), duration DESC, name"
+                if by_duration else " ORDER BY name")
+        sql += " LIMIT ?"          # LIMIT 必须拼进 SQL；
+        #   只往 params 里塞值会得到 "Incorrect number of bindings"
+        params.append(max(1, min(int(limit or 50), 500)))
+        return self.query(sql, tuple(params))
+
+    def media_stats(self) -> Dict[str, Any]:
+        """媒体库概览：总条目 / 分类分布 / 总时长。"""
+        try:
+            row = self.query_one(
+                "SELECT COUNT(*) AS n, COALESCE(SUM(duration),0) AS dur"
+                " FROM media_items") or {}
+            total = int(row.get("n") or 0)
+            by_cat: Dict[str, int] = {}
+            for r in self.query(
+                    "SELECT category, COUNT(*) AS n FROM media_items"
+                    " GROUP BY category ORDER BY n DESC"):
+                by_cat[str(r.get("category"))] = int(r.get("n") or 0)
+            dur = float(row.get("dur") or 0)
+            return {
+                "available": True,
+                "total": total,
+                "by_category": by_cat,
+                "total_hours": round(dur / 3600.0, 2) if dur else 0.0,
+                "roots": len(self.list_media_roots()),
+            }
+        except Exception as ex:
+            return {"available": False, "reason": f"{type(ex).__name__}: {ex}"}
+
+    def prune_media(self, roots: List[str]) -> int:
+        """清掉文件已不存在的条目，返回清理条数。
+
+        条目表只记路径，没有外键可级联，所以删除文件后必须显式清 ——
+        否则库里会堆积指向空气的"幽灵歌曲"，查询结果越来越失真。
+
+        实现上**逐条判断**而不是拼 ``NOT LIKE``：一条条目一次 ``os.path.exists``，
+        几千条也就几十毫秒，却避免了「路径含 ``%``/``_`` 通配符」「占位符数不匹配」
+        这类拼接式SQL 的坑（Windows 路径里出现 ``_`` 并不罕见）。
+        """
+        prefixes: List[str] = []
+        for r in (roots or []):
+            try:
+                p = Path(str(r)).resolve()
+            except (OSError, ValueError):
+                continue
+            if p.is_dir():
+                prefixes.append(str(p))
+        if not prefixes:
+            # 一个根目录都没有 → 库里没有合法条目，全清
+            return int(self.execute("DELETE FROM media_items").rowcount or 0)
+
+        stale: List[str] = []
+        for row in self.query("SELECT path FROM media_items"):
+            p = str(row.get("path") or "")
+            if not p:
+                stale.append(p)
+                continue
+            inside = any(p.startswith(pref) for pref in prefixes)
+            if not inside or not os.path.exists(p):
+                stale.append(p)
+        for p in stale:
+            if p:
+                self.execute("DELETE FROM media_items WHERE path=?", (p,))
+        return len(stale)
 
     def memory_audit(self, limit: int = 50) -> List[Dict[str, Any]]:
         return self.query(

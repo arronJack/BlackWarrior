@@ -6,7 +6,7 @@
 
 <div align="center">
 
-![version](https://img.shields.io/badge/version-0.4.0-37e6ff)
+![version](https://img.shields.io/badge/version-0.5.0-37e6ff)
 ![python](https://img.shields.io/badge/python-3.9%2B-8b5cff)
 ![electron](https://img.shields.io/badge/electron-33-9feaf9)
 ![license](https://img.shields.io/badge/license-MIT-3bffa5)
@@ -126,6 +126,41 @@ v0.3 的象量是 sha256 哈希 —— 确定性有，**语义没有**（"苹果
 
 喂给 PASM V2 的仍是 **8 维**（内核 `entity_latent_dim` 的硬约束），
 由 `encode_pasm()` 从内部 64 维截取前 8 维 —— SVD 分量按奇异值降序，前 8 维信息量最大。
+
+### 本地媒体库（v0.5）
+
+v0.5 起黑武士能索引你本机的音乐 / 视频 / 图片。**关键设计：纯标准库实现**。
+
+| 能力 | 内置（零依赖） | 装了 mutagen 后 |
+|---|---|---|
+| MP3 | ID3v2 标题/艺术家/专辑/年份 + 时长 | 同（内置已够） |
+| FLAC | 全部标签 + 采样率/位深/声道/时长 | 同 |
+| M4A / MP4 | 标题/艺术家/专辑/时长 | 同 |
+| WAV | 时长/采样率/位深/声道 | 同 |
+| OGG | 标题/艺术家 | 同 |
+| JPG/PNG/GIF/BMP | 尺寸 | + EXIF（需 Pillow） |
+
+为什么不用 mutagen 打底：实测本机 mutagen / Pillow **都不可用**。若媒体库建立在
+这些库之上，在绝大多数没装它们的机器上这项能力会**整块消失** —— 那违背
+"永不隐藏降级"的立身之本。所以内置自己解析文件头，把"零依赖可用"当底线；
+mutagen 存在时借它补精度，`reader` 字段会标明本次元数据来自
+`builtin` 还是 `builtin+mutagen`。
+
+**读不到就是 `null`**，绝不编造：没有标签的 mp3，其 `artist`/`album` 在库里
+是 `NULL`（不是空串），UI 上显示 `—`。
+
+扫描是**增量**的：按 `(大小, 修改时间)` 指纹，只重新解析变化过的文件。
+音乐库动辄几万文件，全量重扫一次要几十秒，不能每次查询都做。
+另有文件数（20000）与时间（20 秒）双上限，触顶时返回 `truncated: true`
+并在 `note` 里说明"结果不完整" —— **不假装扫完了**。
+
+```bash
+# 登记并扫描
+curl -X POST localhost:8777/api/media/roots -d '{"path": "D:////Music"}'
+curl -X POST localhost:8777/api/media/scan -d '{}'
+# 查
+curl "localhost:8777/api/media/items?category=audio"
+```
 
 ### 档位与降级（永不隐藏）
 
@@ -433,6 +468,8 @@ blackwarrior --version        # 版本与协议
 | `embedding_backend` | `auto` | 语义嵌入后端：`auto` / `lsa` / `hash` / `onnx` |
 | `embedding_model` | - | ONNX 后端的本地模型路径（留空=不用 onnx） |
 | `embedding_persist` | `true` | 学到的语义落盘，重启不丢 |
+| `media_enabled` | `true` | 本地媒体库（关掉则连工具都不注册） |
+| `media_auto_scan` | `false` | 启动时自动扫一次（大目录首次扫要几十秒，默认关） |
 | `weather_enabled` / `weather_city` | `false` / - | 天气面板 |
 | `hotspot_enabled` | `false` | 热点面板 |
 | `prefetch_enabled` | `false` | 预取心跳刷新 |
@@ -460,6 +497,10 @@ blackwarrior --version        # 版本与协议
 | GET | `/api/healthz` | 健康检查 |
 | GET | `/api/version` | 版本与协议 |
 | GET | `/api/status` | 完整状态（含 `cognition` / `affect` / `panorama` / `pasm2`） |
+| GET | `/api/media` | 媒体库总览（条目/分类/总时长/目录数） |
+| GET | `/api/media/items?category=&q=&limit=` | 列条目（分类 + 关键词过滤） |
+| GET/POST/DELETE | `/api/media/roots` | 目录登记 / 列出 / 取消登记 |
+| POST | `/api/media/scan` | 扫描（`{"full":true}` 全量重扫） |
 | GET | `/api/summary` | 精简状态（高频轮询） |
 
 ### 对话
@@ -580,8 +621,8 @@ BlackWarrior/
 ## 开发与验证
 
 ```bash
-blackwarrior selftest        # 包级自检（45 项，纯本地不依赖网络与模型）
-python tests/test_server.py  # 端到端：57 项（有 numpy 时 62 项）
+blackwarrior selftest        # 包级自检（50 项，纯本地不依赖网络与模型）
+python tests/test_server.py  # 端到端：67 项（有 numpy 时 72 项）
 ```
 
 端到端测试覆盖：REST 主干、SSE 事件流、前端 DOM id 一致性（`$('id')` 必须存在于 HTML）、
@@ -599,6 +640,8 @@ python tests/test_server.py  # 端到端：57 项（有 numpy 时 62 项）
       本机资源感知 + 记忆线索 + 记忆审计
 - [x] **v0.4**：**本地语义嵌入**（LSA PPMI+SVD，numpy-only，从本地语料学，
       冷启动如实报低置信、拿不准返回 0 不硬猜）；「心智」页新增嵌入后端/置信/语料三项
+- [x] **v0.5**：**本地媒体库**（纯标准库解析 ID3/FLAC/MP4/WAV/OGG/图片头，增量扫描、
+      幽灵条目自动清理）；6 个工具 + 6 个端点 + UI「媒体」视图
 - [ ] v0.5：桌面壳内本地 ASR、渠道接入、技能市场（pasm-skills 互通）、多智能体协同
 - [ ] v1.0：安装包全平台产物（NSIS / DMG / AppImage）+ 增量更新
 

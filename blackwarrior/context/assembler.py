@@ -67,6 +67,10 @@ class ContextAssembler:
         if pref:
             blocks.append(pref)
             injected["prefetch"] = True
+        med = self._media_block()
+        if med:
+            blocks.append(med)
+            injected["media"] = True
 
         # v0.3：PASM V2 十九层认知信号（情绪/预测/门控/躯体标记）
         v2 = self._pasm2_block()
@@ -216,6 +220,18 @@ class ContextAssembler:
         """预取缓存块（v0.2）。环境预热内容注入，降低逐轮重查成本。"""
         try:
             return self.ctx.prefetch.to_prompt()
+        except Exception:
+            return ""
+
+    def _media_block(self) -> str:
+        """媒体库概览块（v0.5）。
+
+        只注入**统计概览**（多少首歌/多少张图/总时长），不注入条目列表 ——
+        几百条媒体塞进上下文会把预算吃光，而模型想查具体某首时
+        有 :mod:`list_media` 工具可用。库为空时返回空串，不占token。
+        """
+        try:
+            return self.ctx.media.to_prompt()
         except Exception:
             return ""
 

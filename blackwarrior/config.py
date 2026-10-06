@@ -21,7 +21,7 @@ from typing import Any, Dict, Iterator, List, Mapping, Optional
 
 from . import paths
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 #: 需要脱敏的关键词（小写匹配键名尾部）。
 SECRET_HINTS = ("key", "token", "secret", "password", "passwd", "credential")
@@ -117,6 +117,11 @@ DEFAULTS: Dict[str, Any] = {
     "embedding_backend": "auto",   # auto / hash / lsa / onnx
     "embedding_model": "",         # onnx 后端的模型路径（留空=不用 onnx）
     "embedding_persist": True,     # 把学到的语义落盘，重启不丢
+
+    # ---- 本地媒体库（v0.5）----
+    # 纯标准库实现，打开即有；关掉则连工具都不注册（模型看不到）。
+    "media_enabled": True,
+    "media_auto_scan": False,# 启动时自动扫一次（默认关：大目录首次扫要几十秒）
 }
 
 #: 环境变量映射：环境变量名 -> 配置键。
@@ -212,6 +217,10 @@ class Config:
             # v3 -> v4：补齐本地语义嵌入配置。
             for k in ("embedding_backend", "embedding_model",
                       "embedding_persist"):
+                out.setdefault(k, DEFAULTS[k])
+        if version < 5:
+            # v4 -> v5：补齐本地媒体库配置。
+            for k in ("media_enabled", "media_auto_scan"):
                 out.setdefault(k, DEFAULTS[k])
         out["schema_version"] = SCHEMA_VERSION
         return out

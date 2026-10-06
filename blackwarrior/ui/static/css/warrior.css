@@ -409,6 +409,16 @@ code { font-family: var(--mono); }
 .pf-item .c { display: block; font-size: 12px; color: var(--dim); margin-top: 3px;
                line-height: 1.5; }
 
+/* ---- 媒体库（v0.5）---- */
+.med-tabs { display: flex; gap: 6px; margin: 6px 0 10px; align-items: center; }
+.med-tab { padding: 4px 11px; border-radius: 999px; font-size: 12px;
+            background: rgba(255,255,255,.04); color: var(--dim);
+            border: 1px solid transparent; cursor: pointer; transition: .15s; }
+.med-tab:hover { color: var(--text); }
+.med-tab.on { color: var(--cyan); border-color: rgba(120,180,255,.35);
+              background: rgba(120,180,255,.10); }
+.med-tabs .mini-input { flex: 1; margin-left: 4px; }
+
 /* ---- 心智（v0.3 · PASM V2 十九层） ---- */
 .mind-wrap { flex: 1; overflow: auto; padding: 14px 22px 18px;
              display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }

@@ -106,7 +106,8 @@ class ToolResult:
 
     def __init__(self, ok: bool, name: str, *, result: Any = None,
                  error: str = "", duration_ms: int = 0,
-                 blocked: bool = False, reason: str = "") -> None:
+                 blocked: bool = False, reason: str = "",
+                 trace: str = "") -> None:
         self.ok = ok
         self.name = name
         self.result = result
@@ -114,6 +115,8 @@ class ToolResult:
         self.duration_ms = duration_ms
         self.blocked = blocked
         self.reason = reason
+        #: 异常栈（仅失败时有）。调试时非常有用，别丢。
+        self.trace = trace
 
     def as_dict(self) -> Dict[str, Any]:
         return {
@@ -323,9 +326,13 @@ class ToolRegistry:
         except Exception as ex:
             with self._lock:
                 spec.errors += 1
+            # ⚠ 这里曾传trace=traceback.format_exc()，但 ``ToolResult.__init__``
+            # 没有 trace 参数（v0.1 起就一直是错的）—— 于是**任何工具抛异常**
+            # 都会在这行二次抛 TypeError，把真实的原始异常彻底掩盖。
+            # v0.5 接媒体工具时才暴露。已给 ToolResult 补上 trace 字段。
             return ToolResult(False, name,
                               error=f"{type(ex).__name__}: {ex}",
-                              trace=traceback.format_exc(limit=3),
+                              trace=traceback.format_exc(limit=6),
                               duration_ms=int((time.time() - started) * 1000))
 
     # ------- 运维 -------------------------------------------------

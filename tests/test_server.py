@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import os
 import urllib.parse
 import subprocess
 import sys
@@ -40,18 +41,43 @@ def get(url: str, timeout: float = 8.0):
         return resp.status, json.loads(resp.read().decode("utf-8"))
 
 
-def post(url: str, payload: dict, timeout: float = 130.0):
+def post(url: str, payload: dict, timeout: float = 130.0,
+          allow_error: bool = False):
+    """POST JSON。
+
+    ``allow_error=True`` 时 4xx/5xx 也返回 ``(status, body)`` 而不是抛异常 ——
+    测试要断言"非法输入被拒"这类**预期内**的失败（如400），
+    若让它抛 HTTPError，整轮测试会被打断在这里。
+    """
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         url, data=data, method="POST",
         headers={"Content-Type": "application/json", "Accept": "application/json"})
+    if allow_error:
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.status, json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as ex:
+            try:
+                return ex.code, json.loads(ex.read().decode("utf-8"))
+            except Exception:
+                return ex.code, {}
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.status, json.loads(resp.read().decode("utf-8"))
 
 
-def delete(url: str, timeout: float = 15.0):
+def delete(url: str, timeout: float = 15.0, allow_error: bool = False):
     req = urllib.request.Request(url, method="DELETE",
                                  headers={"Accept": "application/json"})
+    if allow_error:
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.status, json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as ex:
+            try:
+                return ex.code, json.loads(ex.read().decode("utf-8"))
+            except Exception:
+                return ex.code, {}
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.status, json.loads(resp.read().decode("utf-8"))
 
@@ -269,6 +295,51 @@ def main() -> int:
             check("未配置时给出 not_configured", "not_configured" in (detail or ""), detail[:120])
         st, mood = get(base + "/api/cognition/mood?n=20")
         check("情绪曲线", st == 200 and isinstance(mood.get("curve"), list))
+
+        print("== 5b. 本地媒体库（v0.5）==")
+        st, mst = get(base + "/api/media")
+        check("媒体库总览可读", st == 200 and mst.get("available") is True,
+              str(mst)[:120])
+        st, r = post(base + "/api/media/roots",
+                     {"path": "/definitely/not/exist"}, allow_error=True)
+        check("登记不存在目录被拒", st == 400 or r.get("ok") is not True,
+              str(r)[:120])
+        # 造一个临时媒体目录做端到端
+        import tempfile as _tf
+        import struct as _st2
+        _md = _tf.mkdtemp(prefix="bw-media-http-")
+        _payload = b"\x00" + "测试曲".encode("utf-8")
+        _fr = (b"TIT2" + _st2.pack(">I", len(_payload)) + b"\x00\x00"
+               + _payload)
+        _n = len(_fr)
+        _sy = bytes([(_n >> 21) & 0x7F, (_n >> 14) & 0x7F,
+                     (_n >> 7) & 0x7F, _n & 0x7F])
+        with open(os.path.join(_md, "t.mp3"), "wb") as _f:
+            _f.write(b"ID3\x03\x00\x00" + _sy + _fr
+                     + b"\xff\xfb\x90\x00" + b"\x00" * 512)
+        st, r = post(base + "/api/media/roots", {"path": _md})
+        check("登记媒体目录", st == 200 and r.get("ok") is True, str(r)[:100])
+        st, r = post(base + "/api/media/scan", {})
+        check("扫描入库", st == 200 and r.get("added", 0) >= 1, str(r)[:120])
+        st, items = get(base + "/api/media/items?category=audio")
+        check("按分类列条目", st == 200 and items.get("count", 0) >= 1,
+              str(items)[:120])
+        got = (items.get("items") or [{}])[0]
+        check("标题解析正确", got.get("title") == "测试曲",
+              str(got.get("title")))
+        st, items2 = get(base + "/api/media/items?q=t")
+        check("关键词查询可用", st == 200 and items2.get("count", 0) >= 1,
+              str(items2)[:100])
+        st, roots = get(base + "/api/media/roots")
+        check("列出已登记目录", st == 200 and roots.get("count", 0) >= 1,
+              str(roots)[:100])
+        st, r = delete(base + "/api/media/roots?path="
+                       + urllib.parse.quote(_md))
+        check("取消登记", st == 200 and r.get("ok") is True, str(r)[:100])
+        st, roots2 = get(base + "/api/media/roots")
+        check("取消后目录已移除",
+              not any(x.get("path") == _md for x in roots2.get("items", [])),
+              str(roots2)[:100])
 
         print("== 6. 设置与脱敏 ==")
         st, cfg = get(base + "/api/settings")

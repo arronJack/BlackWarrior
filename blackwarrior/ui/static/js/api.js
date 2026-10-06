@@ -84,6 +84,19 @@
     addPrefetch:(u, ttl)  => api.post('/api/prefetch', { url: u, ttl: ttl || 3600 }),
     clearPrefetch:()      => api.del('/api/prefetch'),
 
+    // ---- 本地媒体库（v0.5）----
+    mediaRoots:  ()        => api.get('/api/media/roots'),
+    media:       ()        => api.get('/api/media'),
+    mediaItems:  (cat, q, limit) =>
+                  api.get('/api/media/items?category='
+                        + encodeURIComponent(cat || '')
+                        + '&q=' + encodeURIComponent(q || '')
+                        + '&limit=' + (limit || 50)),
+    addMediaRoot:(path)    => api.post('/api/media/roots', { path: path }),
+    delMediaRoot:(path)    => api.del('/api/media/roots?path='
+                              + encodeURIComponent(path)),
+    scanMedia:  ()        => api.post('/api/media/scan', {}),
+
     // ---- PASM V2 十九层心智（v0.3）
     mind:     ()          => api.get('/api/mind'),
     mindLayers:()         => api.get('/api/mind/layers'),

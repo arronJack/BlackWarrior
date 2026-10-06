@@ -81,6 +81,7 @@
     bindPower();
     bindVoice();
     bindPanorama();
+    bindMedia();
     bindMind();
 
     // 先拿配置（语音开关来自它），再连事件流
@@ -121,6 +122,7 @@
         if (v === 'activity') { loadActivity(); }
         if (v === 'settings') { loadSettings(); }
         if (v === 'panorama') { loadPanorama(); }
+        if (v === 'media') { loadMedia(); }
         if (v === 'mind') { loadMind(); }
       });
     });
@@ -1175,6 +1177,148 @@
 
       $('mindJson').textContent = JSON.stringify(st, null, 2);
     }).catch(() => {});
+  }
+
+  // ============================================================ 媒体库（v0.5）
+
+  let _medCat = '';
+
+  function _fmtDur(sec) {
+    if (!sec && sec !== 0) return '';
+    const s = Math.round(Number(sec));
+    if (!isFinite(s)) return '';
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60),
+          r = s % 60;
+    return h ? (h + ':' + String(m).padStart(2, '0') + ':' + String(r).padStart(2, '0'))
+             : (m + ':' + String(r).padStart(2, '0'));
+  }
+
+  async function loadMedia() {
+    const stats = await api.media().catch(() => null);
+    const box = $('medStats');
+    if (box) {
+      if (!stats || stats.available === false) {
+        box.innerHTML = '<div class="dim">媒体库不可用：'
+          + ((stats && stats.reason) || '未知原因') + '</div>';
+      } else if (!stats.total) {
+        box.innerHTML = '<div class="dim">媒体库为空。'
+          + ((stats.note) || '在右侧登记一个目录后点「扫描」。') + '</div>';
+      } else {
+        const cats = Object.keys(stats.by_category || {})
+          .map(k => k + ' ' + stats.by_category[k]).join(' · ');
+        box.innerHTML =
+          '<div class="kv"><span>条目</span><b>' + stats.total + '</b></div>'
+          + '<div class="kv"><span>分类</span><b>' + (cats || '—') + '</b></div>'
+          + '<div class="kv"><span>总时长</span><b>'
+          + (stats.total_hours ? stats.total_hours + ' 小时' : '—')
+          + '</b></div>'
+          + '<div class="kv"><span>已登记目录</span><b>'
+          + ((stats.roots === undefined) ? '—' : stats.roots) + '</b></div>';
+      }
+    }
+
+    const roots = await api.mediaRoots().catch(() => null);
+    const rb = $('medRoots');
+    if (rb) {
+      const arr = (roots && roots.items) || [];
+      if (!arr.length) {
+        rb.innerHTML = '<div class="dim">还没有登记任何目录</div>';
+      } else {
+        rb.innerHTML = arr.map(function (r) {
+          return '<div class="pf-item"><b>' + (r.path || '')
+            + '</b><span class="c">' + (r.recursive ? '含子目录' : '仅本层')
+            + ' · <a href="#" data-mroot="'
+            + encodeURIComponent(r.path || '') + '">取消登记</a></span></div>';
+        }).join('');
+        rb.querySelectorAll('[data-mroot]').forEach(function (a) {
+          a.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            api.delMediaRoot(decodeURIComponent(a.getAttribute('data-mroot')))
+              .then(function () { toast('已取消登记'); loadMedia(); })
+              .catch(function (e) { toast(e.message, true); });
+          });
+        });
+      }
+    }
+
+    const q = ($('medSearch') && $('medSearch').value.trim()) || '';
+    const items = await api.mediaItems(_medCat, q, 60).catch(() => null);
+    const ib = $('medItems');
+    if (ib) {
+      if (!items || !items.count) {
+        ib.innerHTML = '<div class="dim">没有匹配的条目</div>';
+      } else {
+        ib.innerHTML = items.items.map(function (it) {
+          const bits = [];
+          if (it.artist) bits.push(it.artist);
+          if (it.album) bits.push(it.album);
+          if (it.year) bits.push(it.year);
+          if (it.duration) bits.push(_fmtDur(it.duration) + ' · ' + it.category);
+          else if (it.width && it.height) {
+            bits.push(it.width + 'x' + it.height + ' · ' + it.category);
+          } else { bits.push(it.category); }
+          return '<div class="pf-item"><b>' + (it.title || it.name)
+            + '</b><span class="c">' + bits.join(' / ') + '</span></div>';
+        }).join('');
+      }
+    }
+  }
+
+  function bindMedia() {
+    const scan = $('btnMediaScan');
+    if (scan) {
+      scan.addEventListener('click', function () {
+        scan.disabled = true;
+        scan.textContent = '扫描中…';
+        api.scanMedia().then(function (r) {
+          const msg = (r && r.truncated)
+            ? ('扫到 ' + r.scanned + ' 项（已截断：' + (r.note || '') + '）')
+            : ('新增 ' + (r ? r.added : 0) + ' · 更新 ' + (r ? r.updated : 0)
+               + ' · 清出 ' + (r ? r.removed : 0));
+          toast(msg);
+          loadMedia();
+        }).catch(function (e) { toast(e.message, true); })
+          .finally(function () {
+            scan.disabled = false;
+            scan.textContent = '扫描';
+          });
+      });
+    }
+    const refresh = $('btnMediaRefresh');
+    if (refresh) {
+      refresh.addEventListener('click', function () { loadMedia(); });
+    }
+    const add = $('btnMediaAddRoot');
+    if (add) {
+      add.addEventListener('click', function () {
+        const p = $('medRootPath').value.trim();
+        if (!p) { return; }
+        api.addMediaRoot(p).then(function (r) {
+          toast((r && r.ok) ? '已登记，点击「扫描」开始索引'
+                            : ('失败：' + ((r || {}).error || '未知')));
+          if (r && r.ok) { $('medRootPath').value = ''; }
+          loadMedia();
+        }).catch(function (e) { toast(e.message, true); });
+      });
+    }
+    document.querySelectorAll('.med-tab').forEach(function (b) {
+      b.addEventListener('click', function () {
+        document.querySelectorAll('.med-tab').forEach(function (x) {
+          x.classList.remove('on');
+        });
+        b.classList.add('on');
+        _medCat = b.getAttribute('data-cat') || '';
+        loadMedia();
+      });
+    });
+    const search = $('medSearch');
+    if (search) {
+      let timer = null;
+      search.addEventListener('input', function () {
+        clearTimeout(timer);
+        timer = setTimeout(loadMedia, 300);
+      });
+    }
   }
 
   // ============================================================ Toast

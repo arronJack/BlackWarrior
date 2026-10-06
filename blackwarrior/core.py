@@ -89,6 +89,10 @@ class WarriorCore:
         self.panels = PanelManager(self.config, self.store)
         self.prefetch = PrefetchCache(self.config, self.store)
 
+        # ---- 本地媒体库（v0.5）----
+        from .media.library import MediaLibrary
+        self.media = MediaLibrary(self.store, self.config)
+
         # ---- 主循环 ----
         self.continuum = Continuum(
             run_turn=self._run_turn,
@@ -314,6 +318,7 @@ class WarriorCore:
                     "count": len(self.prefetch.list()),
                     "enabled": bool(self.config.get("prefetch_enabled", False)),
                 },
+                "media": self.media.stats(),
             }
         except Exception:
             panorama = {}
