@@ -33,15 +33,38 @@ Electron 崩了内核还在跑；内核挂了壳能弹窗降级——两边可�
 
 ## 3. 认知内核：档位与诚实
 
+档位是**两条独立的轴**，不要混：
+
+**轴一 · 内核引擎（V1）** —— `pasm-skills` 提供的认知引擎：
+
 | 档位 | 含义 | 何时出现 |
 |---|---|---|
-| `bionic` | PASM 真内核 + 情绪动力学全开 | `pip install ".[pasm]"` 后 |
+| `bionic` | PASM 真内核 + 情绪动力学全开 | 装了 `pasm` extra 且有 torch |
 | `core` | PASM 真内核，情绪简化 | pasm 可用但部分能力缺失 |
 | `light` | 内置等价实现（纯标准库） | 默认，零依赖可跑 |
 | `none` | 认知关闭 | 配置显式关闭 |
 
-**铁律：任何降级必须在 `/api/status` 与 UI 明示**（`tier` + `engine` + `reason`），
-绝不把内置兜底伪装成真内核——这是黑武士最核心的价值观。
+**轴二 · V2 十九层底座** —— `pasm2` 提供的认知器官：
+
+| 状态 | 含义 | 何时出现 |
+|---|---|---|
+| `pasm2` | 十九层全开 + 安全层闸门 + 成长闭环 | 装了 `pasm2`（见下） |
+| `pasm1` | 只有 V1 引擎 | 装了 `pasm` extra |
+| `builtin` | 纯内置实现 | 都没装 |
+
+> **V2 底座装法**：`pasm2` 在 PASM 主仓里，而主仓包名 `pasm-agent`
+> **从未发布到 PyPI**（`pip install pasm-agent` 会报
+> `No matching distribution found`）。只能从源码装，且 V2 只需 numpy：
+>
+> ```bash
+> pip install --no-deps git+https://gitee.com/arronzheng/PASM.git
+> ```
+>
+> `--no-deps` 是为了跳过主仓声明的 `torch>=2.0`（数 GB）——V2 底座本身不 import torch。
+
+**铁律：任何降级必须在 `/api/status` 与 UI 明示**（`tier` + `engine` + `reason` +
+`pasm2.reason` + `embedding.backend`），绝不把内置兜底伪装成真内核——
+这是黑武士最核心的价值观。
 
 ## 4. 持续运行主循环（Continuum）
 

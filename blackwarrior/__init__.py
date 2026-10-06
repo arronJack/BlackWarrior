@@ -207,7 +207,35 @@ def selftest() -> bool:
             print("  ! 装 numpy 可启用本地语义嵌入（LSA）")
 
         print(f"  ! {b2.reason}")
-        print("  ! 装 numpy + pasm-agent 可启用真实十九层底座")
+        print("  ! 装 numpy + 从源码装 PASM 主仓（--no-deps）可启用真实十九层底座"
+              "，见 README「装 PASM V2 十九层底座」")
+
+    # 10. 文档里的安装命令必须指向真实存在的包
+    # 踩过坑：README 写 `pip install pasm-agent`，而那个包名从未发布到 PyPI
+    #（PASM 主仓的 name 就是它，但没发过），用户装完直接报
+    # `No matching distribution found`。文档里的包名必须可核验。
+    try:
+        from pathlib import Path as _P2
+
+        _readme = _P2(__file__).resolve().parents[1] / "README.md"
+        if _readme.is_file():
+            _txt = _readme.read_text(encoding="utf-8")
+            _hits = []
+            for _ln in _txt.splitlines():
+                if "pip install" not in _ln:
+                    continue
+                # 说明性引用（"…会报 No matching distribution found"）不算
+                if "No matching" in _ln or "从未发布" in _ln:
+                    continue
+                _code = _ln.replace("`", "")
+                for _b in ("pasm-agent", "pasm_agent"):
+                    if _b in _code:
+                        _hits.append(_ln.strip()[:60])
+            check(not _hits,
+                  "README 未推荐不存在的包名"
+                  + ("" if not _hits else f"：{_hits}"))
+    except Exception as ex:
+        print(f"  ! 无法校验 README 安装命令：{type(ex).__name__}")
 
     print("-" * 58)
     print("自检结果：" + ("通过" if ok else "失败"))

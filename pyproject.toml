@@ -36,6 +36,14 @@ pasm = [
     "pasm-skills>=0.6.3",
     "pasm-framework>=0.5.4",
 ]
+# V2 十九层底座（pasm2）的运行条件。
+# ⚠️ pasm2 本体在 PASM 主仓里，而主仓包名 `pasm-agent` 从未发布到 PyPI，
+#    所以这里只声明它的运行依赖，装法见 README：
+#      pip install --no-deps git+https://gitee.com/arronzheng/PASM.git
+#    （--no-deps 用于跳过主仓声明的 torch>=2.0，V2 底座本身不需要 torch）
+pasm2 = [
+    "numpy>=1.24",
+]
 dev = [
     "pytest>=7.0",
 ]
