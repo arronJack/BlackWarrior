@@ -99,6 +99,22 @@ def read_sse_frames(host: str, port: int, seconds: float = 3.0):
     return frames
 
 
+def check_no_foreign_attrs() -> None:
+    """产物里不该有外部页面编辑工具注入的属性。
+
+    实测：某些 HTML 预览/编辑工具会往 DOM 上撒 `data-page-node-id`，
+    一次就注入了 400+ 个。它们与黑武士无关，却污染源码、干扰 review，
+    而且会在每次预览后反复出现——所以静态卡一道。
+    """
+    import re as _re
+
+    root = ROOT / "blackwarrior" / "ui" / "static"
+    html = (root / "index.html").read_text(encoding="utf-8")
+    hits = _re.findall(r'data-page-node-id="[^"]*"', html)
+    check("index.html 无外部注入属性", not hits,
+          f"{len(hits)} 处 data-page-node-id")
+
+
 def check_dom_ids() -> None:
     """前端 DOM id 一致性：JS 引用的 id 必须在 HTML 里存在。
 
@@ -124,6 +140,7 @@ def main() -> int:
         port = s.getsockname()[1]
 
     print("== 0. 前端静态一致性 ==")
+    check_no_foreign_attrs()
     check_dom_ids()
 
     print("== 1. 拉起内核 ==")

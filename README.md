@@ -6,7 +6,7 @@
 
 <div align="center">
 
-![version](https://img.shields.io/badge/version-0.3.0-37e6ff)
+![version](https://img.shields.io/badge/version-0.4.0-37e6ff)
 ![python](https://img.shields.io/badge/python-3.9%2B-8b5cff)
 ![electron](https://img.shields.io/badge/electron-33-9feaf9)
 ![license](https://img.shields.io/badge/license-MIT-3bffa5)
@@ -104,6 +104,28 @@
 | narrator | 语言输出 | 经 LLM 桥的语言生成（**无 LLM 时退化为结构化诚实申报**） |
 | — | 成长回路 | 失衡告警 → 参数建议 → 灰度应用 |
 | — | evalkit | 成长日记 GrowthTrace + 十四项失衡监测 |
+
+### 本地语义嵌入（v0.4）
+
+v0.3 的象量是 sha256 哈希 —— 确定性有，**语义没有**（"苹果"和"手机"在哈希空间里
+是随机两点）。v0.4 起默认改用 **LSA**（PPMI + 截断 SVD），从黑武士自己见过的
+文本里学：
+
+| 后端 | 依赖 | `semantic` | 说明 |
+|---|---|---|---|
+| `onnx` | onnxruntime + 模型 | ✅ 最高 | 配了 `embedding_model` 就用 |
+| `lsa` | numpy | ✅ 较高 | **默认**。完全离线、隐私不出本机 |
+| `hash` | 无（纯标准库） | ❌ | 兜底。确定性但无语义 |
+
+**取舍要诚实说清**：LSA 的语义来自**共现结构** —— 语料里"苹果"和"手机"常一起出现，
+它们才会靠近。冷启动时语料不足，语义很弱。所以：
+
+- `confidence` 随语料量**如实上升**，UI「心智」页直接显示"语义置信 0.59（语料 38 篇）"；
+- 拿不准时返回 `0.0`（诚实的"不知道"），**不硬猜** —— 实测 12 组配对里
+  6 组真关系命中 4 组，**零误报**：宁可漏，不可错。
+
+喂给 PASM V2 的仍是 **8 维**（内核 `entity_latent_dim` 的硬约束），
+由 `encode_pasm()` 从内部 64 维截取前 8 维 —— SVD 分量按奇异值降序，前 8 维信息量最大。
 
 ### 档位与降级（永不隐藏）
 
@@ -213,10 +235,11 @@ npm start
 | `numpy` + `pasm-agent` | **PASM V2 十九层底座**：安全层闸门、元认知、反事实推理、成长闭环 | 退回内核 V1 档，「心智」页标注原因 |
 | `pasm-skills` | 内核 V1 档（`bionic`/`core`）：语义检索 + 情绪系统 | 退回 `builtin` 档，字面+字符级检索 |
 | `torch` | 情绪系统（valence × arousal → mood） | 情绪退化为单一效价值 |
+| `numpy` | **本地语义嵌入**（LSA）：象量从"无语义哈希"升级为从本地语料学的真语义 | 退回 sha256 哈希，`/api/mind` 如实标注"无语义" |
 | `psutil` | `system_probe` 能读内存/电池 | 内存字段为空并标注"未装 psutil" |
 
 ```bash
-pip install numpy
+pip install numpy               # 启用本地语义嵌入（LSA）+ PASM V2 底座
 pip install pasm-agent          # PASM 引擎（含 pasm2 底座）
 pip install pasm-skills         # 认知基座（可选）
 pip install psutil              # 本机资源探测（可选）
@@ -366,6 +389,9 @@ blackwarrior --version        # 版本与协议
 | `pasm2_profile` | `full` | `minimal` / `standard` / `full` / `brainwide` |
 | `pasm2_tool_gate` | `true` | V2 安全层作为工具闸门 |
 | `pasm2_verify_claims` | `false` | 输出前对结论性断言做逻辑层校验 |
+| `embedding_backend` | `auto` | 语义嵌入后端：`auto` / `lsa` / `hash` / `onnx` |
+| `embedding_model` | - | ONNX 后端的本地模型路径（留空=不用 onnx） |
+| `embedding_persist` | `true` | 学到的语义落盘，重启不丢 |
 | `weather_enabled` / `weather_city` | `false` / - | 天气面板 |
 | `hotspot_enabled` | `false` | 热点面板 |
 | `prefetch_enabled` | `false` | 预取心跳刷新 |
@@ -513,8 +539,8 @@ BlackWarrior/
 ## 开发与验证
 
 ```bash
-blackwarrior selftest        # 包级自检（41 项，纯本地不依赖网络与模型）
-python tests/test_server.py  # 端到端：HTTP/SSE/UI + 前端静态一致性
+blackwarrior selftest        # 包级自检（45 项，纯本地不依赖网络与模型）
+python tests/test_server.py  # 端到端：57 项（有 numpy 时 62 项）
 ```
 
 端到端测试覆盖：REST 主干、SSE 事件流、前端 DOM id 一致性（`$('id')` 必须存在于 HTML）、
@@ -530,8 +556,9 @@ python tests/test_server.py  # 端到端：HTTP/SSE/UI + 前端静态一致性
 - [x] **v0.3**：接入 **PASM V2 十九层认知底座**（安全层闸门 / 元认知 ACC /
       反事实推理 / 成长闭环 / 失衡监测）+「心智」视图 + 工具自发现 +
       本机资源感知 + 记忆线索 + 记忆审计
-- [ ] v0.4：本地语义嵌入（替换哈希象量）、桌面壳内本地 ASR、渠道接入
-- [ ] v0.5：技能市场（pasm-skills 生态互通）、多智能体协同
+- [x] **v0.4**：**本地语义嵌入**（LSA PPMI+SVD，numpy-only，从本地语料学，
+      冷启动如实报低置信、拿不准返回 0 不硬猜）；「心智」页新增嵌入后端/置信/语料三项
+- [ ] v0.5：桌面壳内本地 ASR、渠道接入、技能市场（pasm-skills 互通）、多智能体协同
 - [ ] v1.0：安装包全平台产物（NSIS / DMG / AppImage）+ 增量更新
 
 规划中（尚未实现，不做承诺）：本地媒体处理（音乐库/视频面板）、

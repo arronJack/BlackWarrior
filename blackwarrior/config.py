@@ -21,7 +21,7 @@ from typing import Any, Dict, Iterator, List, Mapping, Optional
 
 from . import paths
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 #: 需要脱敏的关键词（小写匹配键名尾部）。
 SECRET_HINTS = ("key", "token", "secret", "password", "passwd", "credential")
@@ -107,6 +107,15 @@ DEFAULTS: Dict[str, Any] = {
     "pasm2_profile": "full",     # minimal / standard / full / brainwide
     "pasm2_tool_gate": True,     # 用 V2 安全层做工具调用前的内核级闸门
     "pasm2_verify_claims": False,  # 输出前对结论性声明做逻辑层校验（更严，也更慢）
+
+    # ---- 本地语义嵌入（v0.4）----
+    # 象量从"确定性哈希（无语义）"升级为"从本地语料学的真语义"。
+    # hash  = 纯标准库兜底，零依赖但无语义（v0.3 的行为）
+    # lsa   = numpy PPMI+SVD，从黑武士见过的文本里学，完全离线（推荐）
+    # onnx  = 装了本地 ONNX 模型时用，质量最高
+    "embedding_backend": "auto",   # auto / hash / lsa / onnx
+    "embedding_model": "",         # onnx 后端的模型路径（留空=不用 onnx）
+    "embedding_persist": True,     # 把学到的语义落盘，重启不丢
 }
 
 #: 环境变量映射：环境变量名 -> 配置键。
@@ -197,6 +206,11 @@ class Config:
             # v2 -> v3：补齐 PASM V2 十九层认知底座配置。
             for k in ("pasm2_enabled", "pasm2_profile", "pasm2_tool_gate",
                       "pasm2_verify_claims"):
+                out.setdefault(k, DEFAULTS[k])
+        if version < 4:
+            # v3 -> v4：补齐本地语义嵌入配置。
+            for k in ("embedding_backend", "embedding_model",
+                      "embedding_persist"):
                 out.setdefault(k, DEFAULTS[k])
         out["schema_version"] = SCHEMA_VERSION
         return out

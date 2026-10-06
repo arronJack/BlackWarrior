@@ -101,6 +101,15 @@ def _jsonable(v: Any) -> Any:
     return str(v)[:200]
 
 
+def _default_embedder() -> Any:
+    """按可用性选语义嵌入后端（hash / lsa / onnx）。任何环境都不抛异常。"""
+    try:
+        from .embedding import build_embedder
+        return build_embedder("auto")
+    except Exception:
+        return None
+
+
 def num(v: Any) -> Optional[float]:
     """安全转 float：拿不到就返回 None（UI 显示为「—」），不编造 0。"""
     try:
@@ -153,7 +162,8 @@ class Pasm2Bridge:
     """
 
     def __init__(self, profile: str = "full", *, data_root: Optional[str] = None,
-                 tool_allowlist: Optional[List[str]] = None) -> None:
+                 tool_allowlist: Optional[List[str]] = None,
+                 embedder: Any = None) -> None:
         self._probe = probe()
         self.profile = profile
         self.reason = self._probe["reason"]
@@ -164,7 +174,14 @@ class Pasm2Bridge:
         self._last_verify: Dict[str, Any] = {}
         self._alerts: List[Dict[str, Any]] = []
         self._growth: Dict[str, Any] = {}
-        self._semantic = False          # 哈希嵌入：诚实标注无语义
+        # v0.4：语义嵌入后端（hash / lsa / onnx）。没有它就用纯标准库哈希兜底，
+        # 语义检索相应降级——但状态里一定写明当前是哪一档。
+        self._embedder = embedder if embedder is not None else _default_embedder()
+        try:
+            self._semantic = bool(getattr(self._embedder, "semantic", False))
+        except Exception:
+            self._embedder = None
+            self._semantic = False
         self._data_root = data_root
         self._started_at = time.time()
         # 主循环调 observe()、HTTP 线程调 status()、工具线程调 verify_tool()
@@ -227,22 +244,57 @@ class Pasm2Bridge:
     # ------- 象量编码 ---------------------------------------------
 
     def encode(self, text: str) -> List[float]:
-        """文本 → 8 维连续潜态 z（**纯标准库**，无需 numpy）。
+        """文本 → 8 维连续潜态 z（喂给 PASM V2 的象量）。
 
-        用 sha256 确定性哈希（与 pasm2 自带 ``HashEmbedding`` 同思路），
-        **诚实标注 ``semantic=False``**：它保证"同一句话→同一个象量"的可复现性，
-        但不保证语义相近的句子靠近。真语义嵌入可在 v0.4 接入本地嵌入模型，
-        届时把 ``self._semantic`` 翻成 True 即可，下游无需改动。
+        v0.4 起走**语义嵌入后端**（LSA/ONNX），只有它们都不可用时才退回
+        纯标准库的 sha256 哈希。哈希保证"同一句话→同一个象量"的可复现性，
+        但**不保证语义相近的句子靠近**——所以用哈希时 :attr:`_semantic`
+        恒为 False，UI 与 `/status` 都会如实标注，不会假装有语义。
         """
-        raw = str(text or "").strip()
-        digest = hashlib.sha256(raw.encode("utf-8")).digest()
-        # 取 8 段各 2 字节 → [-1,1] 的确定性向量
+        if self._embedder is not None:
+            try:
+                # 嵌入后端内部维度更高（64），这里只取 PASM 要的前 8 维
+                fn = getattr(self._embedder, "encode_pasm", None)
+                z = list(fn(text) if callable(fn) else self._embedder.encode(text))
+                if len(z) >= Z_DIM:
+                    return [float(v) for v in z[:Z_DIM]]
+            except Exception:
+                pass
+        return self._hash_encode(text)
+
+    def learn(self, text: str) -> None:
+        """喂一篇语料给嵌入后端（让它逐步学到本地语义）。"""
+        fn = getattr(self._embedder, "feed", None)
+        if not callable(fn):
+            return
+        try:
+            fn(str(text or ""))
+        except Exception:
+            pass
+
+    @staticmethod
+    def _hash_encode(text: str) -> List[float]:
+        """sha256 确定性哈希（纯标准库，任何环境都能跑）。"""
+        raw = str(text or "").strip().encode("utf-8")
+        digest = hashlib.sha256(raw).digest()
         z = [(int.from_bytes(digest[i * 2:i * 2 + 2], "big") / 32767.5) - 1.0
              for i in range(Z_DIM)]
         norm = math.sqrt(sum(v * v for v in z))
-        if norm > 1e-9:
-            z = [v / norm for v in z]
-        return z
+        return [v / norm for v in z] if norm > 1e-9 else z
+
+    def embedding_status(self) -> Dict[str, Any]:
+        """嵌入后端状态（供 UI 与 API 展示，必须能看出是语义还是哈希）。"""
+        if self._embedder is None:
+            return {"backend": "hash", "semantic": False,
+                    "reason": "无可用嵌入后端，退回 sha256 哈希"}
+        try:
+            st = dict(self._embedder.status())
+        except Exception as ex:
+            return {"backend": "hash", "semantic": False,
+                    "reason": f"嵌入后端状态读取失败：{type(ex).__name__}"}
+        st.setdefault("semantic", bool(getattr(self._embedder, "semantic", False)))
+        st["pasm_dim"] = Z_DIM
+        return st
 
     # ------- 四个动作 ---------------------------------------------
 
@@ -254,6 +306,8 @@ class Pasm2Bridge:
         digest 的字段随开关变化（未开启的模块字段为 None）——
         这是 pasm2 的诚实约定，本层原样透传，不补齐、不伪造。
         """
+        # 持续喂语料：嵌入后端从黑武士见过的文本里学本地语义
+        self.learn(text)
         if not self.available:
             return {}
         try:
@@ -489,7 +543,11 @@ class Pasm2Bridge:
             "version": self._probe.get("version", ""),
             "stage": self._probe.get("stage", ""),
             "api": self._probe.get("api", ""),
-            "semantic_embedding": self._semantic,
+            # 实时读，不用构造时的快照：冷启动时 False，
+            # 语料攒够后前端刷新就能看到 True
+            "semantic_embedding": bool(
+                getattr(self._embedder, "semantic", self._semantic)),
+            "embedding": self.embedding_status(),
             "uptime": round(time.time() - self._started_at, 1),
             "alerts": alerts,
         }

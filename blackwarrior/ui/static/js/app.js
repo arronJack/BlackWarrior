@@ -1152,7 +1152,11 @@
       $('mEntities').textContent = st.entities === undefined ? '—' : st.entities;
       $('mSymbols').textContent = st.symbols === undefined ? '—' : st.symbols;
       $('mEdges').textContent = st.memory_graph_edges === undefined ? '—' : st.memory_graph_edges;
+      const emb = st.embedding || {};
+      $('mEmbedBackend').textContent = emb.backend || '—';
       $('mSemantic').textContent = st.semantic_embedding ? '真语义' : '哈希（无语义）';
+      $('mEmbedConf').textContent = emb.confidence === undefined ? '—' : fmt.num(emb.confidence);
+      $('mEmbedDocs').textContent = (emb.docs === undefined) ? '—' : (emb.docs + ' 篇');
 
       // 失衡告警
       const ab = $('alertBox');

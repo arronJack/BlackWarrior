@@ -177,6 +177,35 @@ def selftest() -> bool:
         check(not b2.verify_tool("x", {}), "V2 缺席时校验安静返回空")
         check(len(b2.status().get("layers") or []) == 19,
               "V2 缺席时仍列十九层（标注未接入，不假装有）")
+        # v0.4 语义嵌入：哈希必须无语义，LSA 必须能判出真语义
+        from .brain.embedding import HashEmbedding, LsaEmbedding
+        _h = HashEmbedding()
+        check(_h.similarity("苹果", "苹果") > 0.99 and
+              not getattr(_h, "semantic", False),
+              "哈希后端：确定性但无语义（如实标注）")
+        _l = LsaEmbedding()
+        for _d in ("苹果 水果 香蕉 都常见", "我喜欢吃苹果", "水果店有苹果香蕉",
+                   "汽车 轮胎 发动机 保养", "汽车轮胎该保养了",
+                   "孩子的作业考试要复习", "复习备考做作业"):
+            _l.feed(_d)
+        _l.rebuild()
+        check(len(_l.encode_pasm("苹果")) == 8,
+              "LSA 给 PASM 的投影恒为 8 维")
+        check(b2.embedding_status().get("backend") in ("hash", "lsa", "onnx"),
+              f"嵌入后端可申报（{b2.embedding_status().get('backend')}）")
+        if getattr(_l, "semantic", False):
+            _rel = _l.similarity("汽车", "轮胎")
+            _unrel = _l.similarity("汽车", "香蕉")
+            check(_rel > _unrel,
+                  f"LSA 语义生效（相关 {_rel:+.3f} > 无关 {_unrel:+.3f}，"
+                  f"置信 {_l.confidence()}）")
+        else:
+            # 没 numpy 时 LSA 做不了 SVD，必须**如实退哈希**而不是假装有语义。
+            # 这正是"永不隐藏降级"要验的那条：降级了要说降级了。
+            check(_l.semantic is False,
+                  f"LSA 无 numpy 时诚实退化为无语义（{_l.status().get('reason')}）")
+            print("  ! 装 numpy 可启用本地语义嵌入（LSA）")
+
         print(f"  ! {b2.reason}")
         print("  ! 装 numpy + pasm-agent 可启用真实十九层底座")
 
