@@ -106,6 +106,65 @@ def register(reg: Any, ctx: Any) -> None:
         except Exception as ex:
             return {"ok": False, "error": f"{type(ex).__name__}: {ex}"}
 
+    def open_app(name: str) -> Dict[str, Any]:
+        """启动电脑上的应用（个人智能助理的必备能力）。
+
+        查找顺序：PATH 可执行文件 → Windows 开始菜单快捷方式（.lnk）。
+        支持英文名（notepad / calc / wechat）与中文名（记事本 / 微信）。
+        """
+        import os
+        import shutil
+        import subprocess
+
+        n = str(name or "").strip().strip('"')
+        if not n:
+            return {"ok": False, "error": "缺少 name 参数（如 notepad / 微信）"}
+
+        # 1) PATH 里直接找
+        exe = shutil.which(n)
+        if not exe and not n.lower().endswith(".exe"):
+            exe = shutil.which(n + ".exe")
+        if exe:
+            try:
+                subprocess.Popen([exe])
+                return {"ok": True, "app": n, "via": exe}
+            except Exception as ex:
+                return {"ok": False, "app": n,
+                        "error": f"{type(ex).__name__}: {ex}"}
+
+        # 2) Windows：开始菜单快捷方式（覆盖"微信/网易云"这类不在 PATH 的应用）
+        if os.name == "nt":
+            import glob as _glob
+            roots = [
+                os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"),
+                             "Microsoft", "Windows", "Start Menu", "Programs"),
+                os.path.join(os.environ.get("APPDATA", ""),
+                             "Microsoft", "Windows", "Start Menu", "Programs"),
+            ]
+            needle = n.lower()
+            for root in roots:
+                if not os.path.isdir(root):
+                    continue
+                best = ""
+                for lnk in _glob.glob(os.path.join(root, "**", "*.lnk"),
+                                      recursive=True):
+                    base = os.path.basename(lnk).lower()
+                    if base == needle + ".lnk":
+                        best = lnk
+                        break          # 完全同名：最优，立刻用
+                    if not best and needle in base:
+                        best = lnk     # 包含关系：先记下，继续找更精确的
+                if best:
+                    try:
+                        os.startfile(best)  # noqa: S606 — 用户明确要求启动
+                        return {"ok": True, "app": n, "via": best}
+                    except Exception as ex:
+                        return {"ok": False, "app": n, "candidate": best,
+                                "error": f"{type(ex).__name__}: {ex}"}
+
+        return {"ok": False, "app": n,
+                "error": "找不到应用。可改用完整路径（.exe/.lnk），或用 open_url 打开网站"}
+
     reg.register("set_reminder", set_reminder, risk=RISK_CAUTION,
                  category="system", description="设置一个定时提醒")
     reg.register("list_reminders", list_reminders, risk=RISK_SAFE,
@@ -119,6 +178,9 @@ def register(reg: Any, ctx: Any) -> None:
                  description="查看运行状态")
     reg.register("environment", environment, risk=RISK_SAFE, category="system",
                  description="查看运行环境信息")
+    reg.register("open_app", open_app, risk=RISK_CAUTION, category="system",
+                 description="启动电脑上的应用（如 notepad / calc / 微信 / WeChat）。"
+                             "用户说『帮我打开XX应用』时用这个；打开网站用 open_url")
     reg.register("list_tools", list_tools, risk=RISK_SAFE, category="system",
                  description="列出可用工具")
     reg.register("remember_feedback", remember_feedback, risk=RISK_SAFE,

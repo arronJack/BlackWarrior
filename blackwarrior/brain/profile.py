@@ -76,7 +76,10 @@ class UserProfile:
         if m and not _is_stopword(m.group(1)):
             cand = m.group(1).strip("·•")
             # 排除"我是做/我是学"这类不接人名的表达
-            if len(cand) >= 1 and cand not in ("一", "你", "他", "她", "谁"):
+            # （v0.6.6）并排除疑问指代：'我叫什么名字' 曾把画像覆盖成
+            #   "什么名字"——问句里抓到的候选一律不是名字。
+            if len(cand) >= 1 and cand not in ("一", "你", "他", "她", "谁") \
+                    and not re.search(r"什么|怎么|怎样|如何|谁|哪|啥|吗|呢|吧|名字", cand):
                 found["name"] = cand
 
         # 身份/工作：我的工作/职业/岗位是 X；我是做 X 的；我从事 X

@@ -425,6 +425,18 @@ class TurnRunner:
         channel = msg.channel if msg else "ui"
         from_id = msg.from_id if msg else "local"
 
+        # 画像抽取（v0.6.6）：用户自述「我是XX / 我叫XX / 我喜欢X」时记进画像。
+        # 此前 ProfileEngine.extract_from **从未被任何回合调用**——画像永远空白，
+        # 问候/称呼永远只能是"主人"。「我说我是小志它要记住」就在这里兑现。
+        if text and not is_auto and not text.startswith("[系统"):
+            try:
+                facts = ctx.profile.extract_from(text)
+                for k, v in (facts or {}).items():
+                    ctx.profile.set(k, v, evidence="用户自述", confidence=0.8)
+                    emit("profile_updated", {"aspect": k, "value": v})
+            except Exception:
+                pass
+
         try:
             ctx.store.add_message("user", text, turn_id=turn_id,
                                   channel=channel, from_id=from_id)

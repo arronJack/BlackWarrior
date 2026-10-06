@@ -283,6 +283,16 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache")
         self._cors()
         self.end_headers()
+
+        # UI 首次接入 → 主动打招呼（每个 serve 会话只一次）。
+        # 延迟触发：等 SSEStream.run() 完成订阅后再发事件，否则问候会丢。
+        try:
+            greet = getattr(self.core, "greet_once", None)
+            if callable(greet):
+                threading.Timer(0.8, greet).start()
+        except Exception:
+            pass
+
         try:
             SSEStream(BUS, self.wfile, last_event_id=last_id).run()
         except Exception:

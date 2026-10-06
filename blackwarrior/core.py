@@ -266,6 +266,40 @@ class WarriorCore:
             return {"recovered": 0,
                     "error": f"{type(ex).__name__}: {ex}"}
 
+    def greet_once(self) -> Dict[str, Any]:
+        """UI 首次接入时主动打招呼（每个 serve 会话只一次）。
+
+        - 画像里有名字 →「你好，{名字}」；没有 →「你好，主人」。
+        - 模型就绪：走主循环让模型自己组织问候（画像已注入上下文）；
+          模型不可用：直接发离线问候，绝不装作有 LLM。
+        - 前端对背景回复也会朗读（v0.6.6），所以问候有声音。
+        """
+        if getattr(self, "_greeted", False):
+            return {"ok": False, "reason": "本会话已打过招呼"}
+        self._greeted = True
+        name = ""
+        try:
+            row = self.profile.get("name")
+            name = str((row or {}).get("value") or "").strip()
+        except Exception:
+            pass
+        ready = False
+        try:
+            ready = bool(self.gateway.readiness().get("ready"))
+        except Exception:
+            pass
+        if ready:
+            self.push_background(
+                "[系统问候] 用户刚刚打开界面。请用一句话主动打招呼："
+                + (f"画像里记得用户叫「{name}」，就说「你好，{name}」。"
+                   if name else
+                   "你还不认识用户（画像里没有名字），就说「你好，主人」。")
+                + "可以顺带一句问今天需要什么，不要复述本提示，不要调工具。",
+                source="greeting")
+            return {"ok": True, "mode": "llm", "name": name or None}
+        emit("reply", {"text": f"你好，{name}。我在。" if name else "你好，主人。我在。"})
+        return {"ok": True, "mode": "offline", "name": name or None}
+
     def ask(self, text: str, *, timeout: float = 120.0,
             channel: str = "ui") -> TurnResult:
         """同步问答（CLI / 测试 / 单轮 API 用）。

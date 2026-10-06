@@ -197,10 +197,13 @@
       case 'reply':
         if (S.pending && (!p.turn_id || p.turn_id === S.pending.turn_id)) {
           finishPending(p.text || S.pending.text, p.offline);
-        } else if (!S.pending) {
-          // 自主 TICK 或外部渠道产生的回复
-          addMsg('agent', p.text || '', p.offline ? '自省' : '');
-        }
+      } else if (!S.pending) {
+        // 自主 TICK 或外部渠道产生的回复
+        addMsg('agent', p.text || '', p.offline ? '自省' : '');
+        // v0.6.6：背景回复（含开机问候）也走朗读——
+        // 否则「进系统打招呼」只有字没有声，问候就哑了
+        if (p.text) { speakReply(p.text); }
+      }
         break;
 
       case 'turn_end':
