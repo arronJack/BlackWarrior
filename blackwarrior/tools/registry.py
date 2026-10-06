@@ -310,14 +310,40 @@ class ToolRegistry:
                               reason=f"工具 {name} 不在白名单内")
 
         started = time.time()
+
+        def _fail(msg: str) -> ToolResult:
+            # 参数问题不算工具异常，但计入 errors（统计口径：没干成事）。
+            with self._lock:
+                spec.errors += 1
+            return ToolResult(False, name, error=msg,
+                              duration_ms=int((time.time() - started) * 1000))
+
+        props = (spec.parameters or {}).get("properties", {}) or {}
+        required = list((spec.parameters or {}).get("required", []) or [])
         try:
             kwargs = dict(args or {})
             # 过滤掉模型可能塞进来的未知参数，避免直接 TypeError
-            allowed_params = set((spec.parameters or {}).get("properties", {}).keys())
-            if allowed_params:
-                unknown = set(kwargs.keys()) - allowed_params
+            if props:
+                unknown = set(kwargs.keys()) - set(props.keys())
                 for k in unknown:
                     kwargs.pop(k)
+            # v0.6.1：缺必填参数不再让 handler 抛裸 TypeError——
+            # 直接返回带正确参数清单的友好错误，模型下一轮可自我纠正。
+            missing = [r for r in required if r not in kwargs]
+            if missing:
+                sig_hint = "; ".join(
+                    f"{p}({props[p].get('type', 'any')}"
+                    + ("，必填" if p in required else "，可选") + ")"
+                    for p in props.keys()) or "（无参数）"
+                guesses = []
+                for m in missing:
+                    for uk in (args or {}):
+                        if uk != m and (uk.startswith(m[:3]) or m.startswith(uk[:3])):
+                            guesses.append(f"你可能想传的是「{m}」，却传成了「{uk}」")
+                return _fail(
+                    f"参数错误：缺少必填参数 {missing}。"
+                    + ("；".join(guesses) + "。" if guesses else "")
+                    + f"该工具的参数：{sig_hint}")
             with self._lock:
                 spec.calls += 1
             result = spec.handler(**kwargs)

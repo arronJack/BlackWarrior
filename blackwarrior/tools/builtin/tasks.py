@@ -117,6 +117,14 @@ def register(reg: Any, ctx: Any) -> List[str]:
                  category="task", description="跳过当前步骤并记录原因")
     names.append("task_skip_step")
 
+    def task_pause(task_id: int, reason: str = "") -> dict:
+        """暂停任务（之后可恢复）。想彻底不做了才用 task_abandon。"""
+        return ctx.tasks.pause(int(task_id), reason=reason)
+
+    reg.register("task_pause", task_pause, risk=RISK_SAFE, category="task",
+                 description="暂停任务（可恢复；彻底放弃用 task_abandon）")
+    names.append("task_pause")
+
     def task_abandon(task_id: int, reason: str = "") -> dict:
         """放弃任务（记录保留，可事后查）。"""
         return ctx.tasks.abandon(int(task_id), reason=reason)
@@ -180,7 +188,8 @@ def selftest() -> bool:
     names = register(reg, ctx)
     want = ("task_create", "list_tasks", "task_current", "task_step_done",
             "task_step_failed", "task_complete", "task_resume",
-            "task_skip_step", "task_abandon", "push_background")
+            "task_skip_step", "task_abandon", "task_pause",
+            "push_background")
     for w in want:
         check(w in names, f"工具 {w} 已注册")
     for spec in reg.specs():

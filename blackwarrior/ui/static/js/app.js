@@ -128,6 +128,14 @@
         if (v === 'mind') { loadMind(); }
       });
     });
+    // 对话页头部的任务 chip：点击直达任务页
+    const ct = $('chipTask');
+    if (ct) {
+      ct.addEventListener('click', () => {
+        const btn = document.querySelector('.nav-btn[data-view="tasks"]');
+        if (btn) { btn.click(); }
+      });
+    }
   }
 
   // ============================================================ SSE
@@ -491,6 +499,21 @@
       const modelName = (S.settings && S.settings.model) || '';
       $('chipModel').textContent = '模型 ' +
         (S.activated ? (modelName || '已连接') : '未接入');
+
+      // v0.6.1：任务在对话页头部可见（此前 /status 不带 tasks，任务"隐身"）
+      const tk = st.tasks || {};
+      const chipTask = $('chipTask');
+      if (chipTask) {
+        const at = tk.active;
+        if (at && at.title) {
+          const pct = Math.round(Number(at.progress || 0) * 100);
+          chipTask.textContent = '任务: ' + String(at.title).slice(0, 12) +
+            ' ' + pct + '%';
+          chipTask.hidden = false;
+        } else {
+          chipTask.hidden = true;
+        }
+      }
       $('chatSub').textContent = S.running
         ? ('持续运行 · ' + (((st.cognition || {}).tier) || '') + ' 内核 · 工具 ' + (((st.tools || {}).count) || 0))
         : '主循环已停止';
@@ -1270,6 +1293,7 @@
       + '<span class="c">' + st + ' · ' + t.done_steps + '/' + t.total_steps
       + '（' + pct + '%） · ' + cur + '</span>'
       + '<span class="c"><a href="#" data-act="resume">恢复</a> · '
+      + '<a href="#" data-act="pause">暂停</a> · '
       + '<a href="#" data-act="step_done">完成这步</a> · '
       + '<a href="#" data-act="complete">收尾</a> · '
       + '<a href="#" data-act="abandon">放弃</a></span></div>';
@@ -1298,6 +1322,7 @@
               toast('失败：' + ((r && (r.reason || r.error)) || '未知'), true);
             } else {
               toast('已' + ({ resume: '恢复', step_done: '推进',
+                              pause: '暂停',
                               complete: '收尾', abandon: '放弃' }[act] || act));
             }
             loadTasks();

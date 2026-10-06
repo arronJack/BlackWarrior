@@ -42,7 +42,9 @@
 
 from __future__ import annotations
 
+import functools
 import json
+import threading
 import time
 from typing import Any, Dict, List, Optional
 
@@ -70,6 +72,24 @@ TICK_SCALE_WITH_TASK = 0.75
 
 def _now() -> float:
     return time.time()
+
+
+def _serialized(fn):
+    """给「读 payload → 改 → 写回」型方法串行化。
+
+    本引擎被三方并发调用：HTTP 线程（/api/tasks/action）、主循环
+    （心跳 to_prompt / tick_scale_hint）、工具线程（模型调 task_step_done）。
+    store 层有锁能防数据库损坏，但**防不了两个线程读到同一份 payload
+    各自改完互相覆盖**（丢更新）。所以用一把可重入锁把整个方法包起来。
+    与 Pasm2Bridge 同一考量。
+    """
+
+    @functools.wraps(fn)
+    def wrapper(self, *a, **kw):
+        with self._lock:
+            return fn(self, *a, **kw)
+
+    return wrapper
 
 
 def _dumps(value: Any) -> str:
@@ -101,6 +121,7 @@ class TaskEngine:
     def __init__(self, store: Any, config: Any = None) -> None:
         self.store = store
         self.config = config
+        self._lock = threading.RLock()
 
     # ------------------------------------------------------------------ 开关
 
@@ -114,6 +135,7 @@ class TaskEngine:
 
     # ------------------------------------------------------------------ 生命周期
 
+    @_serialized
     def recover(self) -> Dict[str, Any]:
         """进程启动时调用：把上次遗留的 active 任务转为 paused。
 
@@ -154,6 +176,7 @@ class TaskEngine:
 
     # ------------------------------------------------------------------ 创建
 
+    @_serialized
     def create(self, title: str, steps: List[Any],
                goal: str = "", channel: str = "ui") -> Dict[str, Any]:
         """新建任务。``steps`` 可以是字符串列表或 {title, prompt, done_when} 列表。"""
@@ -199,6 +222,7 @@ class TaskEngine:
                 "steps": len(norm),
                 "first_step": norm[0]["title"]}
 
+    @_serialized
     def resume(self, task_id: int) -> Dict[str, Any]:
         """恢复一个暂停/阻塞的任务。"""
         row = self._row(task_id)
@@ -213,12 +237,51 @@ class TaskEngine:
         for st in payload.get("steps") or []:
             if st.get("status") == SS_RUNNING:
                 st["status"] = SS_PENDING
+        # ★ 全部步骤都已执行完的，不要"恢复"成 active ——
+        #   那样它会占着 active_task() 让心跳一直加快，却无步可做，
+        #   用户看到"恢复成功"却什么都没发生（2026-10-06 复盘实测踩到）。
+        #   这种任务只差一句 task_complete，应当明确提示而不是假装能继续。
+        if self._current_of(payload) is None:
+            return {"ok": False, "state": state,
+                    "reason": "所有步骤已执行完毕，无需恢复 —— "
+                              "请核对后调用 task_complete 收尾",
+                    "needs": "task_complete"}
         self._save(task_id, state=ST_ACTIVE, payload=payload)
         from ..events import emit
 
         emit("task_resumed", {"task_id": int(task_id)})
         return {"ok": True, "task_id": int(task_id),
                 "state": ST_ACTIVE, "current": self._current_of(payload)}
+
+    @_serialized
+    @_serialized
+    def pause(self, task_id: int, reason: str = "") -> Dict[str, Any]:
+        """主动暂停任务（可恢复）。
+
+        为什么需要它：v0.6.0 初版只有 ``abandon``（终态、不可逆）而没有
+        pause，用户想"先搁着明天再说"只能选"放弃"—— 而放弃是终态，
+        误点就找不回来了。pause 补上了这个中间态。
+        """
+        row = self._row(task_id)
+        if row is None:
+            return {"ok": False, "reason": f"任务不存在：{task_id}"}
+        state = str(row.get("state") or "")
+        if state in TERMINAL_TASK_STATES:
+            return {"ok": False, "reason": f"任务已终态（{state}），无法暂停"}
+        payload = self._payload(row)
+        if reason:
+            payload.setdefault("pause_reason", str(reason)[:200])
+        # 暂停时把正在跑的那一步退回 pending，恢复后能重新开始这一步
+        for st in payload.get("steps") or []:
+            if st.get("status") == SS_RUNNING:
+                st["status"] = SS_PENDING
+        self._save(task_id, state=ST_PAUSED, payload=payload)
+        from ..events import emit
+
+        emit("task_paused", {"task_id": int(task_id),
+                             "reason": str(reason)[:120]})
+        return {"ok": True, "task_id": int(task_id), "state": ST_PAUSED,
+                "current": self._current_of(payload)}
 
     def abandon(self, task_id: int, reason: str = "") -> Dict[str, Any]:
         """放弃任务（不删记录，保留可查）。"""
@@ -233,6 +296,7 @@ class TaskEngine:
                                 "reason": str(reason)[:200]})
         return {"ok": True, "task_id": int(task_id), "state": ST_ABANDONED}
 
+    @_serialized
     def complete(self, task_id: int, evidence: str = "") -> Dict[str, Any]:
         """★ 显式完成任务。**必须给证据**（为什么认为做完了）。
 
@@ -267,6 +331,7 @@ class TaskEngine:
         return self._current_of(payload) or {
             "error": "所有步骤都已处理，需要显式调用 task_complete 收尾"}
 
+    @_serialized
     def step_done(self, task_id: int, result: str = "",
                   advance: bool = True) -> Dict[str, Any]:
         """标记当前步骤完成，游标前进到下一步。"""
@@ -301,6 +366,7 @@ class TaskEngine:
                          "task_complete 收尾（系统不会替你判定完成）")
                 if nxt is None else ""}
 
+    @_serialized
     def step_failed(self, task_id: int, error: str = "") -> Dict[str, Any]:
         """当前步骤失败。连续失败达阈值 → 任务转blocked（等人工决策）。"""
         row = self._row(task_id)
@@ -332,6 +398,7 @@ class TaskEngine:
                 if state == ST_BLOCKED else
                 f"已记录失败（第 {fails} 次），可修正后重试或 step_failed 再报"}
 
+    @_serialized
     def skip_step(self, task_id: int, reason: str = "") -> Dict[str, Any]:
         """跳过当前步骤（记录原因，游标前进）。"""
         row = self._row(task_id)
@@ -557,6 +624,16 @@ def selftest() -> bool:
     check(en._row(t2)["state"] == ST_PAUSED,
           "★重启后遗留 active 任务转 paused（不自动继续）")
     check("继续任务" in (rec.get("note") or ""), "恢复提示告知用户如何继续")
+
+    # 7b) pause 可恢复（与 abandon 终态相反）
+    p1 = en.create("可暂停任务", ["x", "y"])
+    ptid = p1["task_id"]
+    pr = en.pause(ptid, "先搁着")
+    check(pr.get("ok") and en._row(ptid)["state"] == ST_PAUSED,
+          "★pause 可暂停（abandon 是终态，pause 可回来）")
+    check(en.resume(ptid).get("ok") is True, "paused 可恢复")
+    en.abandon(ptid, "不做了")
+    check(en.resume(ptid).get("ok") is False, "abandon 仍是终态不可恢复")
 
     # 8) 注入上下文
     en.resume(t2)

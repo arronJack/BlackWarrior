@@ -406,6 +406,22 @@ class WarriorCore:
         except Exception:
             loop["next_tick_in"] = None
 
+        # v0.6.1：任务概览（复盘补缺口——任务在 /status 不可见，
+        # 只能去 /api/tasks 单独查；状态页/头部徽标都要用这个）。
+        try:
+            active = self.tasks.active_task()
+            counts: Dict[str, int] = {}
+            for row in self.tasks.list_tasks(limit=100):
+                s = str(row.get("state") or "unknown")
+                counts[s] = counts.get(s, 0) + 1
+            tasks_block = {
+                "active": active,
+                "counts": counts,
+                "active_id": (active or {}).get("id"),
+            }
+        except Exception:
+            tasks_block = {"active": None, "counts": {}, "active_id": None}
+
         return {
             "version": version_info(),
             "running": self.is_running(),
@@ -422,6 +438,7 @@ class WarriorCore:
             "policy": self.policy.stats(),
             "panorama": panorama,
             "pasm2": self.pasm2.status() if self.pasm2 else {},
+            "tasks": tasks_block,
         }
 
     def summary(self) -> Dict[str, Any]:

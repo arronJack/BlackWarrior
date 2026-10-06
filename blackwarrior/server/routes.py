@@ -396,11 +396,14 @@ def post_task_action(core, body, params, handler):
         return core.tasks.resume(tid)
     if act == "skip":
         return core.tasks.skip_step(tid, reason=result)
+    if act == "pause":
+        return core.tasks.pause(tid, reason=result)
     if act == "abandon":
         return core.tasks.abandon(tid, reason=result)
     return 400, {"error": f"未知 action：{act}",
                  "allowed": ["current", "step_done", "step_failed",
-                             "complete", "resume", "skip", "abandon"]}
+                             "complete", "resume", "skip", "pause",
+                             "abandon"]}
 
 
 def post_background(core, body, params, handler):

@@ -1,550 +1,551 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<html lang="zh-CN" data-page-node-id="Wnm64znliPDoBMCkDmnjcP">
+<head data-page-node-id="V29lAPagnrIDgX6hzmD8K2">
+<meta charset="utf-8" data-page-node-id="Le4A0v0reDpvav0WvQ6tPE" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" data-page-node-id="1w33982VRQXLZkFSGamqhf" />
 <title>黑武士 BlackWarrior</title>
-<link rel="stylesheet" href="./css/warrior.css" />
+<link rel="stylesheet" href="./css/warrior.css" data-page-node-id="SlNgHV51xcHzNBevHz7N8e" />
 </head>
-<body>
+<body data-page-node-id="bLfMy8Gd120N5CAgbUW71j">
 
 <!-- ============================ 启动序列 ============================ -->
-<div id="boot" class="boot">
-  <div class="boot-grid"></div>
-  <div class="boot-core">
-    <svg class="boot-sigil" viewBox="0 0 200 200" aria-hidden="true">
-      <defs>
-        <linearGradient id="bg1" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stop-color="#37e6ff" /><stop offset="1" stop-color="#8b5cff" />
+<div id="boot" class="boot" data-page-node-id="IEIRjS2woPRua0jgJW1Am4">
+  <div class="boot-grid" data-page-node-id="Cm4xwWk2HwkDEBDrBTl6Wz"></div>
+  <div class="boot-core" data-page-node-id="vpjBLcINxAgI8rZieBxHq7">
+    <svg class="boot-sigil" viewBox="0 0 200 200" aria-hidden="true" data-page-node-id="8tOWWwmtqqhJevILFV8rGe">
+      <defs data-page-node-id="S3IssJgpIpyzUOq6ijDlWe">
+        <linearGradient id="bg1" x1="0" y1="0" x2="1" y2="1" data-page-node-id="KRQWw16PCFF3MR2hiKX2rm">
+          <stop offset="0" stop-color="#37e6ff" data-page-node-id="z8bHQK7sT084RLd0zYtbQs" /><stop offset="1" stop-color="#8b5cff" data-page-node-id="2zv3hynzDsNTgNwNfZgyyQ" />
         </linearGradient>
       </defs>
       <polygon class="sigil-ring" points="100,12 176,56 176,144 100,188 24,144 24,56"
-               fill="none" stroke="url(#bg1)" stroke-width="1.2" />
+               fill="none" stroke="url(#bg1)" stroke-width="1.2" data-page-node-id="z1qMGKW4bufkwBAfrD8zTn" />
       <polygon class="sigil-ring r2" points="100,34 157,67 157,133 100,166 43,133 43,67"
-               fill="none" stroke="#37e6ff" stroke-width="0.8" opacity=".5" />
-      <path class="sigil-blade" d="M100 52 L108 96 L100 150 L92 96 Z" fill="url(#bg1)" opacity=".9" />
-      <path d="M74 100 H126" stroke="#ff3b5c" stroke-width="2.4" stroke-linecap="round" />
-      <circle class="sigil-core" cx="100" cy="100" r="6" fill="#fff" />
+               fill="none" stroke="#37e6ff" stroke-width="0.8" opacity=".5" data-page-node-id="qDukhK28qBO4si7671H4kw" />
+      <path class="sigil-blade" d="M100 52 L108 96 L100 150 L92 96 Z" fill="url(#bg1)" opacity=".9" data-page-node-id="kvNTKs5fDOJYgHByBsmxql" />
+      <path d="M74 100 H126" stroke="#ff3b5c" stroke-width="2.4" stroke-linecap="round" data-page-node-id="w7LN33vMCh4BqYDH3Avh4G" />
+      <circle class="sigil-core" cx="100" cy="100" r="6" fill="#fff" data-page-node-id="T3edb9jDtzdDToX7X15Wlx" />
     </svg>
-    <div class="boot-title">B L A C K W A R R I O R</div>
-    <div class="boot-log" id="bootLog"></div>
-    <div class="boot-bar"><i id="bootBar"></i></div>
+    <div class="boot-title" data-page-node-id="cYbYyOGExoSSYiJ0yGOrph">B L A C K W A R R I O R</div>
+    <div class="boot-log" id="bootLog" data-page-node-id="voY6hZnDseT2NBiD0md98c"></div>
+    <div class="boot-bar" data-page-node-id="9EB1T750vUnrpar9H62bGd"><i id="bootBar" data-page-node-id="aFhNnLEMgFQ52wse79tsrP"></i></div>
   </div>
 </div>
 
 <!-- ============================ 主界面 ============================ -->
-<div id="app" class="app hidden">
+<div id="app" class="app hidden" data-page-node-id="DCK1l0fFaKMF4TAIeXaaKV">
 
   <!-- 背景层 -->
-  <canvas id="stars" class="stars"></canvas>
-  <div class="scanlines"></div>
-  <div class="vignette"></div>
+  <canvas id="stars" class="stars" data-page-node-id="QUKfvTGQVf0r8bOUaEfUoZ"></canvas>
+  <div class="scanlines" data-page-node-id="V8jcV4HEPzzaFEdYj7gVWH"></div>
+  <div class="vignette" data-page-node-id="7OiFxAYebCUnQ93zj8QPCe"></div>
 
   <!-- ---------- 左侧导航 ---------- -->
-  <nav class="rail">
-    <div class="brand" title="黑武士 BlackWarrior">
-      <svg viewBox="0 0 40 40" class="brand-mark">
+  <nav class="rail" data-page-node-id="S9KFYFQofBDy1CsdPeI7EY">
+    <div class="brand" title="黑武士 BlackWarrior" data-page-node-id="azATIjxtUc77E0VN7ajaGO">
+      <svg viewBox="0 0 40 40" class="brand-mark" data-page-node-id="D7AaEg0qKYCZLoZwSE6QzV">
         <polygon points="20,3 34,11 34,29 20,37 6,29 6,11" fill="none"
-                 stroke="#37e6ff" stroke-width="1.4" />
-        <path d="M20 9 L23 20 L20 31 L17 20 Z" fill="#8b5cff" />
-        <path d="M12 20 H28" stroke="#ff3b5c" stroke-width="1.8" stroke-linecap="round" />
+                 stroke="#37e6ff" stroke-width="1.4" data-page-node-id="yJ2sua8WVgliaZTDlZEvSH" />
+        <path d="M20 9 L23 20 L20 31 L17 20 Z" fill="#8b5cff" data-page-node-id="vGXIupj3XD7zzBFz19Deqx" />
+        <path d="M12 20 H28" stroke="#ff3b5c" stroke-width="1.8" stroke-linecap="round" data-page-node-id="OoqEA1uPqvHgxMvKBS7SVA" />
       </svg>
-      <span class="brand-txt">黑武士</span>
+      <span class="brand-txt" data-page-node-id="tnBckgOiwtqKBqJ27FZJoc">黑武士</span>
     </div>
 
-    <button class="nav-btn active" data-view="chat" title="对话">
-      <svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4V5z"/></svg><em>对话</em>
+    <button class="nav-btn active" data-view="chat" title="对话" data-page-node-id="k1pYkSlX4PgFhBv2olOVyX">
+      <svg viewBox="0 0 24 24" data-page-node-id="dqoOeY9LU6CY8IxZBakUGl"><path d="M4 5h16v11H8l-4 4V5z" data-page-node-id="Kulnyjq30VCDLxVTVIBfwQ"/></svg><em data-page-node-id="v3ig36MT898ysKAMaKd0lM">对话</em>
     </button>
-    <button class="nav-btn" data-view="memory" title="记忆">
-      <svg viewBox="0 0 24 24"><path d="M12 3a5 5 0 0 1 5 5v1a4 4 0 0 1 0 8v1a3 3 0 0 1-3 3H10a3 3 0 0 1-3-3v-1a4 4 0 0 1 0-8V8a5 5 0 0 1 5-5z"/><path d="M9 9h6M9 13h6"/></svg><em>记忆</em>
+    <button class="nav-btn" data-view="memory" title="记忆" data-page-node-id="0Ao9x7UYE02ISirkZy1yLx">
+      <svg viewBox="0 0 24 24" data-page-node-id="EDBagWEo7lD9CwJh1ZzYAM"><path d="M12 3a5 5 0 0 1 5 5v1a4 4 0 0 1 0 8v1a3 3 0 0 1-3 3H10a3 3 0 0 1-3-3v-1a4 4 0 0 1 0-8V8a5 5 0 0 1 5-5z" data-page-node-id="mz6wY8rVuN6sHPY0xjGpya"/><path d="M9 9h6M9 13h6" data-page-node-id="rYEbDJIeYleHwkupctdFYM"/></svg><em data-page-node-id="BML4EcjuDaG0RWzHoifavi">记忆</em>
     </button>
-    <button class="nav-btn" data-view="cognition" title="认知">
-      <svg viewBox="0 0 24 24"><path d="M3 14c2-6 6-9 9-9s7 3 9 9"/><path d="M7 18c1.5-3 3.5-4.5 5-4.5S15.5 15 17 18"/><circle cx="12" cy="20" r="1.6"/></svg><em>认知</em>
+    <button class="nav-btn" data-view="cognition" title="认知" data-page-node-id="EGDNxjRuq1qexIijqpncVe">
+      <svg viewBox="0 0 24 24" data-page-node-id="9wNs0QnoSsiHsqQ4LzATlm"><path d="M3 14c2-6 6-9 9-9s7 3 9 9" data-page-node-id="Fqq9dspkkVnX41OmS0krLk"/><path d="M7 18c1.5-3 3.5-4.5 5-4.5S15.5 15 17 18" data-page-node-id="XWhmKBqlVQ3XDewhLba5LL"/><circle cx="12" cy="20" r="1.6" data-page-node-id="gkovSYJ3AAcOVRKv6U0Ljq"/></svg><em data-page-node-id="8Cr1Eb4lPPnlsqQFodFwDo">认知</em>
     </button>
-    <button class="nav-btn" data-view="mind" title="心智">
-      <svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="12" cy="12" r="2.4"/><circle cx="18" cy="6" r="2"/><circle cx="18" cy="18" r="2"/><path d="M7.4 7.4l2.8 3.1M7.4 16.6l2.8-3.1M13.6 10.6l2.8-3.1M13.6 13.4l2.8 3.1"/></svg><em>心智</em>
+    <button class="nav-btn" data-view="mind" title="心智" data-page-node-id="m2CXGwB83XzzujbGib8MyX">
+      <svg viewBox="0 0 24 24" data-page-node-id="HDdeOmBB4z7bLRLNOZ0HSJ"><circle cx="6" cy="6" r="2" data-page-node-id="FkK5ipgp8fHKRDEYDEHvUo"/><circle cx="6" cy="18" r="2" data-page-node-id="g4AwyAyrFkcb9Swa7nmSA6"/><circle cx="12" cy="12" r="2.4" data-page-node-id="cv5sMWawqLHPusjR3fgqo2"/><circle cx="18" cy="6" r="2" data-page-node-id="udJpfwNCVXYjmZl3Rmfaoj"/><circle cx="18" cy="18" r="2" data-page-node-id="ixbTBYzA34DUQDrvY2IEaE"/><path d="M7.4 7.4l2.8 3.1M7.4 16.6l2.8-3.1M13.6 10.6l2.8-3.1M13.6 13.4l2.8 3.1" data-page-node-id="S5xabZDTvo7a3l5631IEc1"/></svg><em data-page-node-id="nEbvEaMnDV4kyMnXtfxoFJ">心智</em>
     </button>
-    <button class="nav-btn" data-view="activity" title="活动">
-      <svg viewBox="0 0 24 24"><path d="M4 12h4l2-6 3 12 2-6h5"/></svg><em>活动</em>
+    <button class="nav-btn" data-view="activity" title="活动" data-page-node-id="gX8QarqAcF87jwx6VBHYlI">
+      <svg viewBox="0 0 24 24" data-page-node-id="TIUWG0DkiHy8DiBBfg2ztP"><path d="M4 12h4l2-6 3 12 2-6h5" data-page-node-id="tcF6RxHr2lHTZ2ZqCcJLar"/></svg><em data-page-node-id="QkFMi0gpkNkEy0DezgckRq">活动</em>
     </button>
-    <button class="nav-btn" data-view="settings" title="设置">
-      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2.2 2.2M16.8 16.8 19 19M19 5l-2.2 2.2M7.2 16.8 5 19"/></svg><em>设置</em>
+    <button class="nav-btn" data-view="settings" title="设置" data-page-node-id="MniPCaDFCIwjEOgMEUJmTA">
+      <svg viewBox="0 0 24 24" data-page-node-id="BNsF7aDn16J38G84vBehPz"><circle cx="12" cy="12" r="3.2" data-page-node-id="N1CQqYuh4jb94MXECeSSWC"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2.2 2.2M16.8 16.8 19 19M19 5l-2.2 2.2M7.2 16.8 5 19" data-page-node-id="Lq6gg2rCXEGEF1dQAA7dU2"/></svg><em data-page-node-id="4Y2TBuF77dPUuHS0iDNrzY">设置</em>
     </button>
-    <button class="nav-btn" data-view="panorama" title="全景">
-      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg><em>全景</em>
+    <button class="nav-btn" data-view="panorama" title="全景" data-page-node-id="VYJlfl4SDH6JIZ3JbVVoFs">
+      <svg viewBox="0 0 24 24" data-page-node-id="xPladZp8DCZ7AVt63eIMzb"><circle cx="12" cy="12" r="9" data-page-node-id="445CuAp7AEZVlaQzQDrGii"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" data-page-node-id="dUCs7HNf9gp8AecXWg3PIJ"/></svg><em data-page-node-id="LpypQpJeuKrvhuMUpAfJHd">全景</em>
     </button>
-    <button class="nav-btn" data-view="media" title="媒体库">
-      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.4"/><circle cx="12" cy="12" r="2.1"/><path d="M12 3.6v3.2M12 17.2v3.2M3.6 12h3.2M17.2 12h3.2"/></svg><em>媒体</em>
+    <button class="nav-btn" data-view="media" title="媒体库" data-page-node-id="2CpBXIdCggmYX83HuDCxoI">
+      <svg viewBox="0 0 24 24" data-page-node-id="MmtrmWUI6q4BdDPKrWR2On"><circle cx="12" cy="12" r="8.4" data-page-node-id="JXjq3Yk84HRcQvnaP8YcIS"/><circle cx="12" cy="12" r="2.1" data-page-node-id="39d02Hfb5uqM9KZDxY0Gce"/><path d="M12 3.6v3.2M12 17.2v3.2M3.6 12h3.2M17.2 12h3.2" data-page-node-id="4BylUGEzaH7gofgRKS5HA8"/></svg><em data-page-node-id="rL7X2XKptR4mJJphyGTYVN">媒体</em>
     </button>
-    <button class="nav-btn" data-view="tasks" title="任务">
-      <svg viewBox="0 0 24 24"><path d="M4 6h10M4 12h13M4 18h7"/><circle cx="18.5" cy="18.5" r="3"/><path d="M18.5 16.6v1.9l1.3.8"/></svg><em>任务</em>
+    <button class="nav-btn" data-view="tasks" title="任务" data-page-node-id="EI6f6PjV0zUrLhBRYH5CEJ">
+      <svg viewBox="0 0 24 24" data-page-node-id="UJKvON0jhrGDUshhdpZnLl"><path d="M4 6h10M4 12h13M4 18h7" data-page-node-id="6kD9mHeLO0HJ4Rf46xNS7h"/><circle cx="18.5" cy="18.5" r="3" data-page-node-id="pxr6vGOisa3PMWbf3OCSR0"/><path d="M18.5 16.6v1.9l1.3.8" data-page-node-id="Fy9HU4ermqycVBsnHaa25v"/></svg><em data-page-node-id="Qg4s8koA9GmAyYCcjkzBzS">任务</em>
     </button>
 
-    <div class="rail-foot">
-      <button id="btnPower" class="nav-btn power" title="停止 / 启动主循环">
-        <svg viewBox="0 0 24 24"><path d="M12 3v9"/><path d="M7 6.5a8 8 0 1 0 10 0"/></svg><em>主循环</em>
+    <div class="rail-foot" data-page-node-id="GRQGUVDcB9iA3RTxm8ox8P">
+      <button id="btnPower" class="nav-btn power" title="停止 / 启动主循环" data-page-node-id="vEZwDO9T9tZj9rIR8nAPml">
+        <svg viewBox="0 0 24 24" data-page-node-id="NiYOKAGgEDRnkiJ6v01FPy"><path d="M12 3v9" data-page-node-id="F2dipG9Fq8HTfwWQltj24j"/><path d="M7 6.5a8 8 0 1 0 10 0" data-page-node-id="AOr8cX3xgeK2q73RrznUvw"/></svg><em data-page-node-id="WOdmbXcrp0JnDa8S5O4z9I">主循环</em>
       </button>
     </div>
   </nav>
 
   <!-- ---------- 主舞台 ---------- -->
-  <main class="stage">
+  <main class="stage" data-page-node-id="pMEF8FSNv7QXlMKarGNhyZ">
 
     <!-- ========== 对话 ========== -->
-    <section class="view active" id="view-chat">
-      <header class="view-head">
-        <div>
-          <h1>对话流</h1>
-          <p class="sub" id="chatSub">持续运行 · 认知内核在线</p>
+    <section class="view active" id="view-chat" data-page-node-id="hz9CUsBtabDNYDxy7BpUNy">
+      <header class="view-head" data-page-node-id="nQ0dAgnZbaDtoUFMzGTKRj">
+        <div data-page-node-id="DK5me0WMDkEoq51wfFHhQ7">
+          <h1 data-page-node-id="4GOy6N6x0527xnCHeaTbju">对话流</h1>
+          <p class="sub" id="chatSub" data-page-node-id="YzSYHELh4UGcVcGyPZ4rb9">持续运行 · 认知内核在线</p>
         </div>
-        <div class="head-right">
-          <span class="chip" id="chipTier">档位 —</span>
-          <span class="chip" id="chipModel">模型 —</span>
-          <button class="chip tgl" id="btnSpeak" title="朗读回复（浏览器语音合成）">
-            <svg viewBox="0 0 24 24" class="ic"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M17 8a5 5 0 0 1 0 8"/></svg>
-            <span>朗读</span>
+        <div class="head-right" data-page-node-id="DVHVxsdGX8Fd5BICDaDKSi">
+          <span class="chip" id="chipTier" data-page-node-id="PrJhGX4I38W5eDypD6bnMB">档位 —</span>
+          <span class="chip" id="chipModel" data-page-node-id="HT1dtcHowvg8FlzO74OoIq">模型 —</span>
+          <span class="chip" id="chipTask" hidden title="点击查看任务详情"></span>
+          <button class="chip tgl" id="btnSpeak" title="朗读回复（浏览器语音合成）" data-page-node-id="Zaq9WL2u7nm2jcuDxZe4uj">
+            <svg viewBox="0 0 24 24" class="ic" data-page-node-id="IZueWxBS2cLwmED6I9FfxF"><path d="M4 9v6h4l5 4V5L8 9H4z" data-page-node-id="UHf4trvR1ckBJ7miQP0ZnX"/><path d="M17 8a5 5 0 0 1 0 8" data-page-node-id="L0yjFmdQoIgSYmeSA3hCm7"/></svg>
+            <span data-page-node-id="M8Cn9IxwIhMX7G4eE6ekhm">朗读</span>
           </button>
-          <span class="chip live" id="chipLink"><i></i>链路</span>
+          <span class="chip live" id="chipLink" data-page-node-id="WIqktPz899mvG02UM3bT8x"><i data-page-node-id="DK7i23NIEeSB1Im0Bh0M7D"></i>链路</span>
         </div>
       </header>
 
-      <div class="stream" id="stream"></div>
+      <div class="stream" id="stream" data-page-node-id="t4D4VIvrcyJBxgUSSYlXRL"></div>
 
-      <div class="thinkbar" id="thinkbar">
-        <div class="tb-left">
-          <span class="pulse"></span>
-          <span id="thinkText">待机</span>
+      <div class="thinkbar" id="thinkbar" data-page-node-id="29ADlReLlXcqOc6iqkOSbC">
+        <div class="tb-left" data-page-node-id="UvFY1PdMGGSh4CLbIIpEFA">
+          <span class="pulse" data-page-node-id="RppsS8z6CvgXauFWFL7Ujy"></span>
+          <span id="thinkText" data-page-node-id="9KiM4FI2JdCVdnMTALWjyB">待机</span>
         </div>
-        <div class="tb-tools" id="thinkTools"></div>
+        <div class="tb-tools" id="thinkTools" data-page-node-id="CaWdwo7AImRCo8gNwEhkng"></div>
       </div>
 
-      <form class="composer" id="composer">
-        <button type="button" class="icobtn" id="btnMic" title="语音输入（浏览器语音识别）">
-          <svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      <form class="composer" id="composer" data-page-node-id="d1hkfGCSShtovJO5cxIYLk">
+        <button type="button" class="icobtn" id="btnMic" title="语音输入（浏览器语音识别）" data-page-node-id="S1qybeOTdH0bR96arCDm0d">
+          <svg viewBox="0 0 24 24" data-page-node-id="iEKhVH1AYfC1vG5wTQXdj7"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z" data-page-node-id="VezrSgRRg3gp6HHV6bWN44"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3" data-page-node-id="f15r3ZmU5DxN5uJsuEeBv0"/></svg>
         </button>
-        <button type="button" class="icobtn" id="btnClear" title="清空会话显示">
-          <svg viewBox="0 0 24 24"><path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14"/></svg>
+        <button type="button" class="icobtn" id="btnClear" title="清空会话显示" data-page-node-id="IA20gFeZykSQBO8azO2Rwz">
+          <svg viewBox="0 0 24 24" data-page-node-id="x11lAQ2hNHBwVjvxd50cXH"><path d="M5 6h14M9 6V4h6v2M7 6l1 14h8l1-14" data-page-node-id="Do5AVDiNPyQgZR8qRcWcTW"/></svg>
         </button>
         <textarea id="input" rows="1" placeholder="对黑武士说话……  Enter 发送 / Shift+Enter 换行"></textarea>
-        <button type="submit" class="sendbtn" id="btnSend">
-          <svg viewBox="0 0 24 24"><path d="M4 12l16-8-6 8 6 8-16-8z"/></svg>
-          <span>发送</span>
+        <button type="submit" class="sendbtn" id="btnSend" data-page-node-id="E70zrPw0RmSAQLLUszQKGo">
+          <svg viewBox="0 0 24 24" data-page-node-id="A4xrfiuIMa8JTMiLcYyrie"><path d="M4 12l16-8-6 8 6 8-16-8z" data-page-node-id="tjI5fJzryRy3gyG0RZNKPT"/></svg>
+          <span data-page-node-id="BIK6nHvWVPEMbn9rGdv0Uc">发送</span>
         </button>
       </form>
     </section>
 
     <!-- ========== 记忆 ========== -->
-    <section class="view" id="view-memory">
-      <header class="view-head">
-        <div>
-          <h1>记忆库</h1>
-          <p class="sub">结构化记忆 · 遗忘曲线保留度 · 语义检索</p>
+    <section class="view" id="view-memory" data-page-node-id="YaCnsGKtI67uChDW7UPa3t">
+      <header class="view-head" data-page-node-id="cFIJIILPUBXPoHFHDpHOPh">
+        <div data-page-node-id="6aM0bNrPAjGF8AfVO06s0D">
+          <h1 data-page-node-id="JeoWRIR5Weg2VTouYuDIeG">记忆库</h1>
+          <p class="sub" data-page-node-id="xkI7Ydws3HHMgAotmkWYuF">结构化记忆 · 遗忘曲线保留度 · 语义检索</p>
         </div>
-        <div class="head-right">
-          <input id="memSearch" class="mini-input" placeholder="语义检索…" />
-          <button class="ghostbtn" id="btnConsolidate">睡眠巩固</button>
-          <button class="ghostbtn danger" id="btnMemClear">清空</button>
+        <div class="head-right" data-page-node-id="5xcu89UNhrE0egXrUhJbuf">
+          <input id="memSearch" class="mini-input" placeholder="语义检索…" data-page-node-id="DugaJyaSVRIll5TJrWgDFI" />
+          <button class="ghostbtn" id="btnConsolidate" data-page-node-id="q9EQ5qvaQ7YR6kubOEQG9T">睡眠巩固</button>
+          <button class="ghostbtn danger" id="btnMemClear" data-page-node-id="5FaDPukFBbzTWaMRgRuvRd">清空</button>
         </div>
       </header>
 
-      <div class="mem-wrap">
-        <div class="mem-side">
-          <div class="panel">
-            <div class="panel-h">记忆图谱</div>
-            <canvas id="memGraph" class="mem-graph"></canvas>
-            <div class="legend">
-              <span><i style="background:#37e6ff"></i>高保留</span>
-              <span><i style="background:#8b5cff"></i>中保留</span>
-              <span><i style="background:#41506b"></i>衰退中</span>
+      <div class="mem-wrap" data-page-node-id="WPA9hWN5ff9796uW3RYhLk">
+        <div class="mem-side" data-page-node-id="LmpXzwHLcKKVd1fQkeyEE0">
+          <div class="panel" data-page-node-id="7cqtWStROmzWpglK7XZeen">
+            <div class="panel-h" data-page-node-id="P2dOJFaBRO5K1UefBexuOR">记忆图谱</div>
+            <canvas id="memGraph" class="mem-graph" data-page-node-id="FggB8jqqxXsR0SuMGwrF4o"></canvas>
+            <div class="legend" data-page-node-id="AEr21HnORstzpkyHt3GYFd">
+              <span data-page-node-id="wH8pMJubDyS9cXBiQz9S8t"><i style="background:#37e6ff" data-page-node-id="j824BL3FDcJ5VA5B9sz2vu"></i>高保留</span>
+              <span data-page-node-id="Pkcd6QrRWUPwmVLjjt641Q"><i style="background:#8b5cff" data-page-node-id="4vpGd0MPpCosCGHld1PRfL"></i>中保留</span>
+              <span data-page-node-id="793RGOLkBKfhGlDgcEVFAp"><i style="background:#41506b" data-page-node-id="RoPLCeDMaevIvIGFDpjp5o"></i>衰退中</span>
             </div>
           </div>
-          <div class="panel">
-            <div class="panel-h">保留度分布</div>
-            <canvas id="retentionChart" class="mini-chart"></canvas>
+          <div class="panel" data-page-node-id="64jM55wotEBc8Omz6VVumm">
+            <div class="panel-h" data-page-node-id="VR7EXWbNca3LLvUT5F5V08">保留度分布</div>
+            <canvas id="retentionChart" class="mini-chart" data-page-node-id="eSDDwMdYhwzju8K8Z9iLlD"></canvas>
           </div>
         </div>
-        <div class="mem-list" id="memList"></div>
+        <div class="mem-list" id="memList" data-page-node-id="7cxB5t0wbyQXtj2PDnSuBZ"></div>
       </div>
     </section>
 
     <!-- ========== 认知 ========== -->
-    <section class="view" id="view-cognition">
-      <header class="view-head">
-        <div>
-          <h1>认知内核</h1>
-          <p class="sub">黑武士独有 · 情绪动力学 / 预测误差 / 焦点栈 / 记忆巩固</p>
+    <section class="view" id="view-cognition" data-page-node-id="qjYyiuH5wmKvK4tymUCvn3">
+      <header class="view-head" data-page-node-id="RqmPVHFoOFqtOn4U0YCZJZ">
+        <div data-page-node-id="5dUGi429zonPzw7bMGvFoq">
+          <h1 data-page-node-id="jGeHV9Z4yahDDEaF8p8zDt">认知内核</h1>
+          <p class="sub" data-page-node-id="NpI5VheVjKIFZTjbirw6hr">黑武士独有 · 情绪动力学 / 预测误差 / 焦点栈 / 记忆巩固</p>
         </div>
-        <div class="head-right">
-          <span class="chip" id="chipEngine">引擎 —</span>
-          <span class="chip" id="chipTier2">档位 —</span>
+        <div class="head-right" data-page-node-id="0cUnDQdVGXpbQM93DriNSY">
+          <span class="chip" id="chipEngine" data-page-node-id="0XVZPXmU7dCvLedMavRQ1K">引擎 —</span>
+          <span class="chip" id="chipTier2" data-page-node-id="GEfLRJ79bnJnSgKhTMjVLL">档位 —</span>
         </div>
       </header>
 
-      <div class="cog-grid">
-        <div class="panel span2">
-          <div class="panel-h">情绪曲线 <small>valence × arousal → mood</small></div>
-          <canvas id="moodChart" class="chart"></canvas>
+      <div class="cog-grid" data-page-node-id="V9b3EV2z3VYLrlQByFfH7o">
+        <div class="panel span2" data-page-node-id="i2b4e2m3ecL27BxrkJIznw">
+          <div class="panel-h" data-page-node-id="iOTrbwqgWCE8vsY3Yz1ZUu">情绪曲线 <small data-page-node-id="ByztwVpvgg0IciRNsqzb2R">valence × arousal → mood</small></div>
+          <canvas id="moodChart" class="chart" data-page-node-id="LG6F0l58x92DzbjhIeF9lq"></canvas>
         </div>
 
-        <div class="panel">
-          <div class="panel-h">预测误差</div>
-          <div class="gauge-wrap">
-            <canvas id="errGauge" class="gauge"></canvas>
-            <div class="gauge-num"><b id="errVal">0.00</b><small>当前</small></div>
+        <div class="panel" data-page-node-id="09kF50PXFzsmjHfDabulF0">
+          <div class="panel-h" data-page-node-id="Axxnnmdqr4CCyJbSxoz5KI">预测误差</div>
+          <div class="gauge-wrap" data-page-node-id="3faE0LrdzGpvY2U72rouG6">
+            <canvas id="errGauge" class="gauge" data-page-node-id="ORpCADCM6vzze9iALObZFS"></canvas>
+            <div class="gauge-num" data-page-node-id="F3Wv1vxgMPHB2hM0BWpwcr"><b id="errVal" data-page-node-id="c8DC41wv5hPnxgnEbA66Cj">0.00</b><small data-page-node-id="empfEkzhwpbzqGffo6NvIm">当前</small></div>
           </div>
-          <div class="kv"><span>滑动均值</span><b id="errAvg">0.00</b></div>
-          <div class="kv"><span>好奇心</span><b id="curVal">0.00</b></div>
-          <div class="kv"><span>心跳缩放</span><b id="tickScale">1.00×</b></div>
+          <div class="kv" data-page-node-id="7MED40HQUArphhA4eOjbCK"><span data-page-node-id="G8zgvhHp2tpXfxCp8GHnU6">滑动均值</span><b id="errAvg" data-page-node-id="In9qPpMny7Fhcs2yI56bcd">0.00</b></div>
+          <div class="kv" data-page-node-id="WB1TEjsNrvwTM2kDGzMxE3"><span data-page-node-id="znRpO1JfZL8Xh60yb1yO3P">好奇心</span><b id="curVal" data-page-node-id="y1GPR2ITrENmcpRT5cbo8j">0.00</b></div>
+          <div class="kv" data-page-node-id="2jHceolrAkJdGBVrFFbzwF"><span data-page-node-id="vk1qaoxcfgWCbBLeol6PTk">心跳缩放</span><b id="tickScale" data-page-node-id="sbS6PUEq4xJCG48ydOTa2q">1.00×</b></div>
         </div>
 
-        <div class="panel">
-          <div class="panel-h">情绪状态</div>
-          <div class="moodbig"><b id="moodNow">0.00</b><small id="moodLabel">平稳</small></div>
-          <div class="bars" id="moodBars"></div>
+        <div class="panel" data-page-node-id="fEqJZL9HMlM4gd7ZGxdKIC">
+          <div class="panel-h" data-page-node-id="sNAx9QJD29rzQctPAjoOiO">情绪状态</div>
+          <div class="moodbig" data-page-node-id="EN2UsYxVNHe9jcZDHX6KjM"><b id="moodNow" data-page-node-id="tNTP6d8y03u48Z6OJzxNMo">0.00</b><small id="moodLabel" data-page-node-id="CEXPGEVBr07mu0MXDi8D5r">平稳</small></div>
+          <div class="bars" id="moodBars" data-page-node-id="2aJGEZvmt5DYuI02ya1xBe"></div>
         </div>
 
-        <div class="panel">
-          <div class="panel-h">认知雷达 <small>六维实时</small></div>
-          <canvas id="cogRadar" class="chart-sm"></canvas>
+        <div class="panel" data-page-node-id="CDxcFrPFo2nWuSk2AkTa6E">
+          <div class="panel-h" data-page-node-id="RHMtPClZ87r4mcOfQPANx1">认知雷达 <small data-page-node-id="pJAwlZWkAJc2Djse0ON72M">六维实时</small></div>
+          <canvas id="cogRadar" class="chart-sm" data-page-node-id="kFUAANGPNxwMqsxS0ADx1C"></canvas>
         </div>
 
-        <div class="panel">
-          <div class="panel-h">记忆保留度 <small>全库均值</small></div>
-          <canvas id="memRing" class="chart-sm"></canvas>
+        <div class="panel" data-page-node-id="GiSVSRNpneN7O8o7FdFGj2">
+          <div class="panel-h" data-page-node-id="g61a23mufHX0Svg4SVkYtV">记忆保留度 <small data-page-node-id="SS8b0sNrB1FdyxDkWklmmh">全库均值</small></div>
+          <canvas id="memRing" class="chart-sm" data-page-node-id="R9bCYyjEIrgu8x6KTg03gd"></canvas>
         </div>
 
-        <div class="panel span2">
-          <div class="panel-h">话题焦点栈 <small>带衰减</small></div>
-          <div class="focus-list" id="focusList"></div>
+        <div class="panel span2" data-page-node-id="yYVwrF5KFN8qCRiYYBJ9yx">
+          <div class="panel-h" data-page-node-id="m2CpXY9HjAFYTPDFszD3qI">话题焦点栈 <small data-page-node-id="7ggtk08TBEePtjSQ5GRxAu">带衰减</small></div>
+          <div class="focus-list" id="focusList" data-page-node-id="XchHA96fRTsRnbWfMowv6h"></div>
         </div>
 
-        <div class="panel span3">
-          <div class="panel-h">内核快照 <small>原始 JSON</small></div>
-          <pre class="jsonbox" id="cogJson">—</pre>
+        <div class="panel span3" data-page-node-id="kOxPrXoWCIdgNvgwVYNU6L">
+          <div class="panel-h" data-page-node-id="bgc9RaRUTHogQ1QHnmm96o">内核快照 <small data-page-node-id="NFED6dfAYpLQV9tLVbm0rx">原始 JSON</small></div>
+          <pre class="jsonbox" id="cogJson" data-page-node-id="taE6o9TdLzXO0h2fuzWAH2">—</pre>
         </div>
       </div>
     </section>
 
     <!-- ========== 活动 ========== -->
-    <section class="view" id="view-activity">
-      <header class="view-head">
-        <div>
-          <h1>活动与工具</h1>
-          <p class="sub">工具调用审计 · 事件流 · 提醒</p>
+    <section class="view" id="view-activity" data-page-node-id="0uB4z1j5f0JJCbWAPFyilN">
+      <header class="view-head" data-page-node-id="TkfK4LDM8iG04epBGqHeHN">
+        <div data-page-node-id="6C6wqlecaYAMKtfA6zxk4W">
+          <h1 data-page-node-id="hwfhr1lLS6EZP08rIPzzd4">活动与工具</h1>
+          <p class="sub" data-page-node-id="RIB0sUpYNM0p2GGWebcSKE">工具调用审计 · 事件流 · 提醒</p>
         </div>
-        <div class="head-right">
-          <button class="ghostbtn" id="btnReloadTools">重载工具</button>
+        <div class="head-right" data-page-node-id="WhY8LITlgX988szZBfVlPL">
+          <button class="ghostbtn" id="btnReloadTools" data-page-node-id="z1xogQoMLmCa0w6vbRA4gd">重载工具</button>
         </div>
       </header>
 
-      <div class="act-grid">
-        <div class="panel">
-          <div class="panel-h">工具注册表</div>
-          <div class="tool-list" id="toolList"></div>
+      <div class="act-grid" data-page-node-id="0SFCtK41YEnwQnZ2WK5H3n">
+        <div class="panel" data-page-node-id="uWZA0aCPkQvR3eInIzdWEn">
+          <div class="panel-h" data-page-node-id="dTaPSQVHi1JkznMR9WiU9T">工具注册表</div>
+          <div class="tool-list" id="toolList" data-page-node-id="vDkK4spyYUQ4xV3jN8kIjC"></div>
         </div>
-        <div class="panel">
-          <div class="panel-h">行动日志</div>
-          <div class="act-list" id="actList"></div>
+        <div class="panel" data-page-node-id="EmsXoMCo2BbxsyHpyEvMoS">
+          <div class="panel-h" data-page-node-id="nv0bEws1gQa1tc0sKT4LjL">行动日志</div>
+          <div class="act-list" id="actList" data-page-node-id="hbCT7Hq3kJQSdzky86UlqB"></div>
         </div>
-        <div class="panel">
-          <div class="panel-h">实时事件流</div>
-          <div class="evt-list" id="evtList"></div>
+        <div class="panel" data-page-node-id="Uh2r1YL4kIT00KSOgSg7lv">
+          <div class="panel-h" data-page-node-id="Xr2Q9lgBmhIRxSovZ0nIHt">实时事件流</div>
+          <div class="evt-list" id="evtList" data-page-node-id="bu21PHZyOoaBcbphYaLrlL"></div>
         </div>
       </div>
     </section>
 
     <!-- ========== 设置 ========== -->
-    <section class="view" id="view-settings">
-      <header class="view-head">
-        <div>
-          <h1>设置</h1>
-          <p class="sub">模型 · 人格 · 主循环 · 能力开关</p>
+    <section class="view" id="view-settings" data-page-node-id="PDncbU0zzLnSSJ8la9taVg">
+      <header class="view-head" data-page-node-id="ewGHVKw8YY7kkIdTrYBPQe">
+        <div data-page-node-id="OtYDzRw4DO3dtCog1XTlJU">
+          <h1 data-page-node-id="UoEgCS8z7whSK5qx1RUvwq">设置</h1>
+          <p class="sub" data-page-node-id="409N4VbxLe8CWbGRJlxPvu">模型 · 人格 · 主循环 · 能力开关</p>
         </div>
-        <div class="head-right">
-          <button class="ghostbtn" id="btnPing">测试连通</button>
-          <button class="ghostbtn warn" id="btnSave">保存</button>
+        <div class="head-right" data-page-node-id="yoJ9qA3cf1XIQdgCCLPIGV">
+          <button class="ghostbtn" id="btnPing" data-page-node-id="CyNMtASVagCGjCjCMvMppI">测试连通</button>
+          <button class="ghostbtn warn" id="btnSave" data-page-node-id="VIDMUNn5PqQGDzQmEDqMog">保存</button>
         </div>
       </header>
 
-      <div class="set-grid">
-        <div class="panel">
-          <div class="panel-h">模型供应商</div>
-          <label class="field"><span>Provider</span>
-            <select id="setProvider"></select>
+      <div class="set-grid" data-page-node-id="zsCgunQtuFhYOqHrXmkIfh">
+        <div class="panel" data-page-node-id="9OCDee84ltrv0FEPXrsKWi">
+          <div class="panel-h" data-page-node-id="HUOYbBGqX7Fd2UWBjMHEFo">模型供应商</div>
+          <label class="field" data-page-node-id="CNw8jSw0RCKwHUvKvplolC"><span data-page-node-id="YlYMQoxoxiqfXSLTAOPeFm">Provider</span>
+            <select id="setProvider" data-page-node-id="alTvGLVSyDDXLa0OwB2EhM"></select>
           </label>
-          <label class="field"><span>模型</span>
-            <input id="setModel" placeholder="deepseek-chat" />
+          <label class="field" data-page-node-id="tnIvPFgWtKVYt6LR3ltdfb"><span data-page-node-id="AcIbIypaHX0EpYPTgLy0g9">模型</span>
+            <input id="setModel" placeholder="deepseek-chat" data-page-node-id="9R3aKqOq7rRnIAk8sCANTf" />
           </label>
-          <label class="field"><span>API Key</span>
-            <input id="setKey" type="password" placeholder="sk-…" />
+          <label class="field" data-page-node-id="7j4eyTrgaXQyUyCzwRpWZ9"><span data-page-node-id="bzv08xfZM9IQipL3vUazVa">API Key</span>
+            <input id="setKey" type="password" placeholder="sk-…" data-page-node-id="zKgDemtxO1DguyGFCUQDos" />
           </label>
-          <label class="field"><span>Base URL（可留空）</span>
-            <input id="setBase" placeholder="自动" />
+          <label class="field" data-page-node-id="4aQp47HLxb5s5pUWZHIE7h"><span data-page-node-id="SryCjRBAndzxdkto7TQdyU">Base URL（可留空）</span>
+            <input id="setBase" placeholder="自动" data-page-node-id="BDHRQR61VLvCtsykQHGZd4" />
           </label>
-          <p class="hint">密钥只保存在本机 <code>data/config.json</code>，界面回显一律脱敏。</p>
+          <p class="hint" data-page-node-id="2YZv3fclEFPPlWyws47k0v">密钥只保存在本机 <code data-page-node-id="HdKiMzCRonyb7U0F5GjoBJ">data/config.json</code>，界面回显一律脱敏。</p>
         </div>
 
-        <div class="panel">
-          <div class="panel-h">人格与主循环</div>
-          <label class="field"><span>名称</span><input id="setName" /></label>
-          <label class="field"><span>语气 / 人格</span><textarea id="setPersona" rows="3"
+        <div class="panel" data-page-node-id="mUHAARsAdv3mwVyqLHj8yy">
+          <div class="panel-h" data-page-node-id="enFhndNl1KvqlHAncSuKUC">人格与主循环</div>
+          <label class="field" data-page-node-id="DWwSVebVkpRi0wxlG33Euv"><span data-page-node-id="45d0HbtnfpCSTeulJYZUEF">名称</span><input id="setName" data-page-node-id="w6zNHalyzWDgE1i7tCkCQn" /></label>
+          <label class="field" data-page-node-id="abMrDAlgorRuAfmICyrSQN"><span data-page-node-id="hgXCc5dCzYVECUBn0YNETa">语气 / 人格</span><textarea id="setPersona" rows="3"
                    placeholder="冷静、克制、直接，不奉承"></textarea></label>
-          <label class="field"><span>空闲心跳（秒）</span><input id="setTick" type="number" min="10" /></label>
-          <label class="field"><span>唤醒期心跳（秒）</span><input id="setAwakeInt" type="number" min="1" /></label>
-          <label class="switch"><input type="checkbox" id="setHeart" /><span>启用心跳（空闲自主思考 TICK）</span></label>
+          <label class="field" data-page-node-id="X76W0wKqiYmOccA01tSebc"><span data-page-node-id="ll8VPnnXF1lEWecXfLcwxE">空闲心跳（秒）</span><input id="setTick" type="number" min="10" data-page-node-id="7wH6RxHXSyKytzEcRIs7fV" /></label>
+          <label class="field" data-page-node-id="eaH9CHlIuqjVJk16k9czqF"><span data-page-node-id="J2H9FcNQBHVRXyXqdgaOYD">唤醒期心跳（秒）</span><input id="setAwakeInt" type="number" min="1" data-page-node-id="g42sy7xBq62deP4i8UL8Pa" /></label>
+          <label class="switch" data-page-node-id="RGEBoH31e2NdC1UZ0b5wGb"><input type="checkbox" id="setHeart" data-page-node-id="lx8yH6yalKXlsoVD5vSwQP" /><span data-page-node-id="I75qVGtpBJmOc63BvVE4HZ">启用心跳（空闲自主思考 TICK）</span></label>
         </div>
 
-        <div class="panel">
-          <div class="panel-h">能力开关</div>
-          <label class="switch"><input type="checkbox" id="capTools" /><span>工具系统</span></label>
-          <label class="switch"><input type="checkbox" id="capDanger" /><span>允许危险工具（删除/写文件）</span></label>
-          <label class="switch"><input type="checkbox" id="capShell" /><span>Shell 命令（危险命令拒绝）</span></label>
-          <label class="switch"><input type="checkbox" id="capWeb" /><span>联网搜索与网页阅读</span></label>
-          <label class="switch"><input type="checkbox" id="capCog" /><span>PASM 认知内核</span></label>
-          <div class="kv"><span>服务地址</span><b id="setUrl">—</b></div>
-          <div class="kv"><span>数据目录</span><b id="setDataDir">—</b></div>
+        <div class="panel" data-page-node-id="HafFhtEAKuYUAUK6cvfilc">
+          <div class="panel-h" data-page-node-id="F3cLBrhW0ehfjALF9ZKIUa">能力开关</div>
+          <label class="switch" data-page-node-id="qx9pI3RYPUHxNGun1XvZGx"><input type="checkbox" id="capTools" data-page-node-id="YbFtpTuDFTSg0ubcB1amuR" /><span data-page-node-id="oUc9jlZ34sbCP6cBwHLrEj">工具系统</span></label>
+          <label class="switch" data-page-node-id="ToKVxeBJTK32VC0QelfI3z"><input type="checkbox" id="capDanger" data-page-node-id="6LYGJ69Awe63NIe1BLgbjT" /><span data-page-node-id="SkugBiUCRA4SFnaR1Z5Doq">允许危险工具（删除/写文件）</span></label>
+          <label class="switch" data-page-node-id="yqyrACRDIDOqp0G0w6F34G"><input type="checkbox" id="capShell" data-page-node-id="XMntrQI3YVP9t7aFwDG0aF" /><span data-page-node-id="In3od3Bw2KSY3sQsJvvdjb">Shell 命令（危险命令拒绝）</span></label>
+          <label class="switch" data-page-node-id="LvFym9qwvlkQ6BqaZFx9zB"><input type="checkbox" id="capWeb" data-page-node-id="uZSZx3DO4ZUOCUNWv6CM6Z" /><span data-page-node-id="qADiH47vJhVBWXrqXNgPGm">联网搜索与网页阅读</span></label>
+          <label class="switch" data-page-node-id="9VO4IpNyrQroUwqYfqkefN"><input type="checkbox" id="capCog" data-page-node-id="9eL0CqMjGjmBnofNMdencv" /><span data-page-node-id="vWymFEUnBGI24oz5ptvcNf">PASM 认知内核</span></label>
+          <div class="kv" data-page-node-id="YIL6drsKQW4zqdCyfADIiq"><span data-page-node-id="wZZeDQuUNh58WNkDz7irWj">服务地址</span><b id="setUrl" data-page-node-id="UQFIWuzscxeFaptKdrtpU0">—</b></div>
+          <div class="kv" data-page-node-id="MH432v2C9rUzxi4iazNmwM"><span data-page-node-id="EUbdz7FtHgKkcQT9kE77Tg">数据目录</span><b id="setDataDir" data-page-node-id="rSmujzKziEUZCEY2O0f1F8">—</b></div>
         </div>
 
-        <div class="panel">
-          <div class="panel-h">语音</div>
-          <label class="switch"><input type="checkbox" id="capVoice" /><span>语音总开关</span></label>
-          <label class="switch"><input type="checkbox" id="capTts" /><span>朗读回复（TTS）</span></label>
-          <label class="switch"><input type="checkbox" id="capAsr" /><span>语音输入（ASR）</span></label>
-          <label class="field"><span>音色（留空用系统默认）</span>
-            <input id="setVoice" placeholder="如 Ting-Ting / Microsoft Xiaoxiao" /></label>
-          <p class="hint">语音走浏览器内置能力（Web Speech API），不装任何依赖。<br/>
-             <b>朗读（TTS）</b>：完全本地、离线可用，浏览器与桌面壳均支持。<br/>
-             <b>识别（ASR）</b>：Chromium 走云端识别；桌面壳内置的 Chromium
-             <b>不带该服务的 API key</b>，因此在 Electron 里基本不可用
+        <div class="panel" data-page-node-id="76CWLRgUIk9vIGGWmygBfM">
+          <div class="panel-h" data-page-node-id="UkGW26OK4TuLwvLk6J73Vd">语音</div>
+          <label class="switch" data-page-node-id="rbZn6grIZAEsEC5lDhMpyg"><input type="checkbox" id="capVoice" data-page-node-id="6pIEzlV5I3kGTVcgMBYRG6" /><span data-page-node-id="kMpauMlpZ6FXY42DQyqh5j">语音总开关</span></label>
+          <label class="switch" data-page-node-id="BmhnhCaY8qkAzBPAh5Yjvr"><input type="checkbox" id="capTts" data-page-node-id="CdUqJ77gkjGjJrleZGm7op" /><span data-page-node-id="VULFOsCPzrhLkPrFSKHJSU">朗读回复（TTS）</span></label>
+          <label class="switch" data-page-node-id="HYaj3D5fZyJOwBoW9mtdDa"><input type="checkbox" id="capAsr" data-page-node-id="3GIHQyn9Fug6YGaDQ2Py9X" /><span data-page-node-id="O0H78bmgEmJCYHIlIvjVl0">语音输入（ASR）</span></label>
+          <label class="field" data-page-node-id="htHAY5YrNnn6XfgBaWIHyY"><span data-page-node-id="HBiavqYOD7E0rBPSEI779Q">音色（留空用系统默认）</span>
+            <input id="setVoice" placeholder="如 Ting-Ting / Microsoft Xiaoxiao" data-page-node-id="AG1M66LEajEXrtTEBCk5R2" /></label>
+          <p class="hint" data-page-node-id="mK3gUPuwaWpKF3O7zFk24g">语音走浏览器内置能力（Web Speech API），不装任何依赖。<br data-page-node-id="KYFvMyARB9MsuF1pqk2oaj"/>
+             <b data-page-node-id="5diSzKp3HTcvjJFxk7Wuws">朗读（TTS）</b>：完全本地、离线可用，浏览器与桌面壳均支持。<br data-page-node-id="sQwOkIAroIVRFRzTFu6KD6"/>
+             <b data-page-node-id="bgargjzqNqwtgCscVE5QB7">识别（ASR）</b>：Chromium 走云端识别；桌面壳内置的 Chromium
+             <b data-page-node-id="qpjeiwR5gnTQybTm9rFdgX">不带该服务的 API key</b>，因此在 Electron 里基本不可用
              （会置灰），在 Chrome / Edge 浏览器打开才可用。
              要在桌面壳内做真语音输入，需换本地 ASR（whisper.cpp 等），
              当前版本不引入。
           </p>
-          <div class="kv"><span>识别引擎</span><b id="asrState">—</b></div>
-          <div class="kv"><span>朗读引擎</span><b id="ttsState">—</b></div>
+          <div class="kv" data-page-node-id="xvh0PGpFHuLjzDg6aJdsq3"><span data-page-node-id="qUg79SIOcgF7tM5Bc6GRCf">识别引擎</span><b id="asrState" data-page-node-id="0se54vBEkINYAVzWlQGC8Q">—</b></div>
+          <div class="kv" data-page-node-id="LkUubYPjeutglmDyLTpXVU"><span data-page-node-id="NvS4E2wYp9hhiFU9eOb41y">朗读引擎</span><b id="ttsState" data-page-node-id="MZvfXZghWjSeopbisJcJxB">—</b></div>
         </div>
       </div>
     </section>
 
     <!-- ========== 心智（v0.3 · PASM V2 十九层） ========== -->
-    <section class="view" id="view-mind">
-      <header class="view-head">
-        <div>
-          <h1>心智</h1>
-          <p class="sub">PASM V2 十九层认知底座 · 安全层 · 元认知 · 成长闭环</p>
+    <section class="view" id="view-mind" data-page-node-id="auwsUVRbU7R5BJsmvSiEnZ">
+      <header class="view-head" data-page-node-id="YdyXuRn5yh8Qgx91Lk7VwT">
+        <div data-page-node-id="ERbg5bZcCv9zg3Pk52u5rX">
+          <h1 data-page-node-id="nfvyBOx9Hmn25DBIdi21BK">心智</h1>
+          <p class="sub" data-page-node-id="1AfGRJ2F2MLvf6fMoCm78l">PASM V2 十九层认知底座 · 安全层 · 元认知 · 成长闭环</p>
         </div>
-        <div class="head-right">
-          <span class="chip" id="chipPasm2">V2 —</span>
-          <button class="ghostbtn" id="btnMindSleep">睡眠巩固</button>
-          <button class="ghostbtn" id="btnMindGrowth">成长复盘</button>
+        <div class="head-right" data-page-node-id="74FQ9BgiyRily19Hd6EA9m">
+          <span class="chip" id="chipPasm2" data-page-node-id="sAg2f6qeaWOd48bcpC4eEG">V2 —</span>
+          <button class="ghostbtn" id="btnMindSleep" data-page-node-id="tjmmumPBJThxAPhet25pbs">睡眠巩固</button>
+          <button class="ghostbtn" id="btnMindGrowth" data-page-node-id="kbqYeVNuqDnHY8xzSRBFeJ">成长复盘</button>
         </div>
       </header>
 
-      <div class="mind-wrap">
-        <div class="panel span2">
-          <div class="panel-h">十九层活跃度 <small>★ PASM V2 独有 · 纯 LLM 方案无此层</small></div>
-          <div class="layer-list" id="layerList"></div>
+      <div class="mind-wrap" data-page-node-id="srf00r1kJGtEDCTs2Cnrqj">
+        <div class="panel span2" data-page-node-id="rrqKMpgrsdQ3nlnrx7Om1g">
+          <div class="panel-h" data-page-node-id="PUp0RA7daZTrwoCZv56dt0">十九层活跃度 <small data-page-node-id="iRT93YE69Ze19RhTAAsLSQ">★ PASM V2 独有 · 纯 LLM 方案无此层</small></div>
+          <div class="layer-list" id="layerList" data-page-node-id="PYLwgSmD4Jk4ui7Ofqd3qo"></div>
         </div>
 
-        <div class="panel">
-          <div class="panel-h">安全层 <small>内核级 · 模型绕不过</small></div>
-          <div id="safetyBox" class="pan-box"></div>
+        <div class="panel" data-page-node-id="9YsN9G17Oj1frBpxBkV54r">
+          <div class="panel-h" data-page-node-id="DrdMCsLLAGML2dxY8OAsmS">安全层 <small data-page-node-id="bybdllBQdbwyrpMEamzfbx">内核级 · 模型绕不过</small></div>
+          <div id="safetyBox" class="pan-box" data-page-node-id="7Qiw4fMf6gTVpDqdD0zKWH"></div>
         </div>
 
-        <div class="panel">
-          <div class="panel-h">认知计数</div>
-          <div class="kv"><span>步数</span><b id="mStep">—</b></div>
-          <div class="kv"><span>象量实体</span><b id="mEntities">—</b></div>
-          <div class="kv"><span>真符号</span><b id="mSymbols">—</b></div>
-          <div class="kv"><span>记忆图边</span><b id="mEdges">—</b></div>
-          <div class="kv"><span>嵌入后端</span><b id="mEmbedBackend">—</b></div>
-          <div class="kv"><span>嵌入语义</span><b id="mSemantic">—</b></div>
-          <div class="kv"><span>语义置信</span><b id="mEmbedConf">—</b></div>
-          <div class="kv"><span>语义语料</span><b id="mEmbedDocs">—</b></div>
+        <div class="panel" data-page-node-id="acAIQ3UML1hTktG8jUDdLX">
+          <div class="panel-h" data-page-node-id="nX05aMRF2R3bJzJHPd7heb">认知计数</div>
+          <div class="kv" data-page-node-id="okGE5EFu4JDGupA7aEz6TE"><span data-page-node-id="3LEcgd49JLt72LoqwT1ZEG">步数</span><b id="mStep" data-page-node-id="D40vmtSdENsaokj6EecDDW">—</b></div>
+          <div class="kv" data-page-node-id="CtVEpoOWk4W0zlrOQyVsgq"><span data-page-node-id="sR2fxToL8irxtSSS69H4RX">象量实体</span><b id="mEntities" data-page-node-id="DjsAzapKfHOUUGkjsevKzr">—</b></div>
+          <div class="kv" data-page-node-id="lRnGcJdPN8lWDfVyEPkNVJ"><span data-page-node-id="D7i9pV96tKvL1UGhsxZPKa">真符号</span><b id="mSymbols" data-page-node-id="OwStxWYDnMCEVj4mEMJstC">—</b></div>
+          <div class="kv" data-page-node-id="pflDSstDOEYk9LomUx6Viz"><span data-page-node-id="aFnHwkpFfJYyCi5dRV81Rr">记忆图边</span><b id="mEdges" data-page-node-id="KAYnO2s7qbxBNN4EKXxBan">—</b></div>
+          <div class="kv" data-page-node-id="2hIRTjDYallyQm327hBwx7"><span data-page-node-id="42v0vvbM1OBHrFdGE9vqIR">嵌入后端</span><b id="mEmbedBackend" data-page-node-id="P1r2RcfDixD65JsJn839J9">—</b></div>
+          <div class="kv" data-page-node-id="0JJa1EREUufXAUrPYozXSS"><span data-page-node-id="UmYX7rRSZLys0keLIAkGuR">嵌入语义</span><b id="mSemantic" data-page-node-id="H3NQpVRlgpAsd5pAFlZSEA">—</b></div>
+          <div class="kv" data-page-node-id="o4qKQROhPUse8JUVF4PE8B"><span data-page-node-id="p5UreUsraGPg1IQd3eAQQ4">语义置信</span><b id="mEmbedConf" data-page-node-id="vqICz7V45Sc8ceOd3uY2AN">—</b></div>
+          <div class="kv" data-page-node-id="lQAo5UwTMpXXjh8lOOBBhm"><span data-page-node-id="eUb3JG2MFyGtPnPDuKvVYa">语义语料</span><b id="mEmbedDocs" data-page-node-id="tDA9dFT2mBGZqMLeyKgglG">—</b></div>
         </div>
 
-        <div class="panel span2">
-          <div class="panel-h">失衡告警 <small>★ 它能发现自己不对劲</small></div>
-          <div id="alertBox" class="pan-box"></div>
+        <div class="panel span2" data-page-node-id="ZnlEFNNMFCuT8K53Rq68OM">
+          <div class="panel-h" data-page-node-id="H49VXSD8inbFJAYf36CyCo">失衡告警 <small data-page-node-id="O13npqBrgmNJ9mFsqgPFiA">★ 它能发现自己不对劲</small></div>
+          <div id="alertBox" class="pan-box" data-page-node-id="j2cunQ5jj4bGwy6Ni2RLKy"></div>
         </div>
 
-        <div class="panel span2">
-          <div class="panel-h">心智快照 <small>原始 JSON</small></div>
-          <pre class="jsonbox" id="mindJson">—</pre>
+        <div class="panel span2" data-page-node-id="yrYPzu1brm6Hh8UiwqhuGZ">
+          <div class="panel-h" data-page-node-id="YQk7zgGqrBBRS8fON8kNtV">心智快照 <small data-page-node-id="NkswkIsUlEH4QQqEr4AskH">原始 JSON</small></div>
+          <pre class="jsonbox" id="mindJson" data-page-node-id="q8Mc01VQN6YdnGBLGNBHvz">—</pre>
         </div>
       </div>
     </section>
 
     <!-- ========== 全景（v0.2） ========== -->
-    <section class="view" id="view-panorama">
-      <header class="view-head">
-        <div>
-          <h1>全景</h1>
-          <p class="sub">用户画像 · 环境面板 · 预取缓存 —— 黑武士"更懂你"的底座</p>
+    <section class="view" id="view-panorama" data-page-node-id="NU5NtynLf0WWwQk67syFjy">
+      <header class="view-head" data-page-node-id="fCO7TlBlZ9vOaj3olBsX1L">
+        <div data-page-node-id="0W2QoBaliHVKvVe019EQ9j">
+          <h1 data-page-node-id="y8ILgCymuvCiC2ydEJfFss">全景</h1>
+          <p class="sub" data-page-node-id="0NqGJeadJPF4dNHwVI7nRJ">用户画像 · 环境面板 · 预取缓存 —— 黑武士"更懂你"的底座</p>
         </div>
-        <div class="head-right">
-          <button class="ghostbtn" id="btnRefetchPanels">刷新面板</button>
+        <div class="head-right" data-page-node-id="rn4ZwgZQBw2W0E0DkkkcYv">
+          <button class="ghostbtn" id="btnRefetchPanels" data-page-node-id="yyik6aUh85OKgGDiHJph3A">刷新面板</button>
         </div>
       </header>
 
-      <div class="pan-grid">
-        <div class="panel">
-          <div class="panel-h">用户画像 <small>结构化 · 带置信度与依据</small></div>
-          <div id="panProfile" class="pan-box"></div>
+      <div class="pan-grid" data-page-node-id="c3ssE2BcgIxiK9ncdzxZNL">
+        <div class="panel" data-page-node-id="KU3DMQah7yUFTU2Wq5NpMF">
+          <div class="panel-h" data-page-node-id="cpVYA7sWR6qSYOhmt3YEW9">用户画像 <small data-page-node-id="SqlRdQb7RcU69G7XSz4Ssh">结构化 · 带置信度与依据</small></div>
+          <div id="panProfile" class="pan-box" data-page-node-id="odCkUdEgF9A3PHKSwLMwRK"></div>
         </div>
 
-        <div class="panel">
-          <div class="panel-h">信息面板 <small>天气 / 热点 / 人物卡</small></div>
-          <div id="panPanels" class="pan-box"></div>
+        <div class="panel" data-page-node-id="ZmEidvRawIxne6kg6hCInx">
+          <div class="panel-h" data-page-node-id="L80mHoCCHB1L9Dw8ooMD7T">信息面板 <small data-page-node-id="jwOApFUp9xS1BUMO8ZImBb">天气 / 热点 / 人物卡</small></div>
+          <div id="panPanels" class="pan-box" data-page-node-id="E9CYeUDP4B4wGoYwKVXJIF"></div>
         </div>
 
-        <div class="panel span2">
-          <div class="panel-h">预取缓存 <small>周期刷新并注入上下文</small></div>
-          <div class="pan-add">
-            <input id="panPrefetchUrl" class="mini-input" placeholder="登记要预取的网址，如 https://wttr.in/Beijing?format=3" />
-            <button class="ghostbtn" id="btnAddPrefetch">登记</button>
+        <div class="panel span2" data-page-node-id="nrozNJPNF1JIlsYmgv0Wu5">
+          <div class="panel-h" data-page-node-id="mUS2tAZzjlq744xAkYkB9W">预取缓存 <small data-page-node-id="5TTsu56qRxQdSyJntSdpMy">周期刷新并注入上下文</small></div>
+          <div class="pan-add" data-page-node-id="0q5BT3kT5xrySCjgUBtoNn">
+            <input id="panPrefetchUrl" class="mini-input" placeholder="登记要预取的网址，如 https://wttr.in/Beijing?format=3" data-page-node-id="lLWdIwuDDfQzlfunJeXDQB" />
+            <button class="ghostbtn" id="btnAddPrefetch" data-page-node-id="LAhb15mybEaTF6AYsOYmuS">登记</button>
           </div>
-          <div id="panPrefetch" class="pan-box"></div>
+          <div id="panPrefetch" class="pan-box" data-page-node-id="edRWRQdpLItMs25jKJBShC"></div>
         </div>
       </div>
     </section>
 
     <!-- ========== 任务（v0.6） ========== -->
-    <section class="view" id="view-tasks">
-      <header class="view-head">
-        <div>
-          <h1>任务</h1>
-          <p class="sub">多步骤目标 · 持久化 · 重启后可继续 —— 系统不会替你判定完成</p>
+    <section class="view" id="view-tasks" data-page-node-id="apD6FR8Cdyd3Qbq2pN133W">
+      <header class="view-head" data-page-node-id="cO425hBjyskw8YWs392wZ7">
+        <div data-page-node-id="M7nTEqi75abRmSr0tcXuWC">
+          <h1 data-page-node-id="FPgzwAzOGGF0rRqYwJjX8t">任务</h1>
+          <p class="sub" data-page-node-id="9RoMUoAzv5gtGsA6zGiaaT">多步骤目标 · 持久化 · 重启后可继续 —— 系统不会替你判定完成</p>
         </div>
-        <div class="head-right">
-          <button class="ghostbtn" id="btnTaskRefresh">刷新</button>
+        <div class="head-right" data-page-node-id="PvYPCVjpMdyGjW6pbGW9eP">
+          <button class="ghostbtn" id="btnTaskRefresh" data-page-node-id="wDRoMGYUbMG0eoX5Tebbi4">刷新</button>
         </div>
       </header>
 
-      <div class="pan-grid">
-        <div class="panel span2">
-          <div class="panel-h">进行中<small>重启后遗留的任务会转为「已暂停」，说「继续任务 N」即可恢复</small></div>
-          <div id="taskActive" class="pan-box"></div>
+      <div class="pan-grid" data-page-node-id="Uu8UtersDD1rmsmHv0gA38">
+        <div class="panel span2" data-page-node-id="iwI3t02bq2DfYn4UDBgctl">
+          <div class="panel-h" data-page-node-id="AltX9B0iadJDlCQMWNbvn1">进行中<small data-page-node-id="74S40KRHmTzgtsnCZZk1CL">重启后遗留的任务会转为「已暂停」，说「继续任务 N」即可恢复</small></div>
+          <div id="taskActive" class="pan-box" data-page-node-id="BnfTE8AGvS7emtdheJTcH8"></div>
         </div>
 
-        <div class="panel span2">
-          <div class="panel-h">全部任务<small>点击可推进 / 恢复 / 放弃</small></div>
-          <div class="med-tabs">
-            <button class="task-tab on" data-state="">全部</button>
-            <button class="task-tab" data-state="active">进行中</button>
-            <button class="task-tab" data-state="paused">已暂停</button>
-            <button class="task-tab" data-state="blocked">受阻</button>
-            <button class="task-tab" data-state="done">已完成</button>
+        <div class="panel span2" data-page-node-id="DDCz8WQ6nwSc2iRFQ3fzkk">
+          <div class="panel-h" data-page-node-id="zsIcLU4b7w2uNwJN1y5Qdn">全部任务<small data-page-node-id="ye2ff6LqTWg98YGivTSbm5">点击可推进 / 恢复 / 放弃</small></div>
+          <div class="med-tabs" data-page-node-id="J1RMwoEq9BvHEshLrF0cMP">
+            <button class="task-tab on" data-state="" data-page-node-id="6nZhFIZAvWWXhwOtUTZKAf">全部</button>
+            <button class="task-tab" data-state="active" data-page-node-id="gYDK6Inl7IYVhaWTZtE1qb">进行中</button>
+            <button class="task-tab" data-state="paused" data-page-node-id="Uegft96jcva0ij006y5mgT">已暂停</button>
+            <button class="task-tab" data-state="blocked" data-page-node-id="3qM7UIA5ecJMIMsCGBUYdm">受阻</button>
+            <button class="task-tab" data-state="done" data-page-node-id="vBygAfbME7BQeuyoCeEWqn">已完成</button>
           </div>
-          <div id="taskList" class="pan-box"></div>
+          <div id="taskList" class="pan-box" data-page-node-id="rayLitjcekHDAWUDIJ9GQP"></div>
         </div>
       </div>
     </section>
 
     <!-- ========== 媒体库（v0.5） ========== -->
-    <section class="view" id="view-media">
-      <header class="view-head">
-        <div>
-          <h1>媒体库</h1>
-          <p class="sub">本地音乐 / 视频 / 图片索引 —— 纯标准库解析文件头，不装任何库也能用</p>
+    <section class="view" id="view-media" data-page-node-id="YoVn9lKbN9l1r39WwHhQt2">
+      <header class="view-head" data-page-node-id="5ynKBIUHnRp8jHLZ6vPuDk">
+        <div data-page-node-id="8QCppruz0HtPeJjM4cLRBM">
+          <h1 data-page-node-id="efq0oWYJzryr827pBdOvmQ">媒体库</h1>
+          <p class="sub" data-page-node-id="Zv4E4aYBDvYq12mWPG0BnX">本地音乐 / 视频 / 图片索引 —— 纯标准库解析文件头，不装任何库也能用</p>
         </div>
-        <div class="head-right">
-          <button class="ghostbtn" id="btnMediaScan">扫描</button>
-          <button class="ghostbtn" id="btnMediaRefresh">刷新</button>
+        <div class="head-right" data-page-node-id="c0jSrCJHp6ZiahJ64o4IFj">
+          <button class="ghostbtn" id="btnMediaScan" data-page-node-id="wTYBVcyj80Ylf1igUWlssc">扫描</button>
+          <button class="ghostbtn" id="btnMediaRefresh" data-page-node-id="B7PG9aRMsE6MSREICw4vFG">刷新</button>
         </div>
       </header>
 
-      <div class="pan-grid">
-        <div class="panel">
-          <div class="panel-h">库概览 <small>条目 / 分类 / 总时长</small></div>
-          <div id="medStats" class="pan-box"></div>
+      <div class="pan-grid" data-page-node-id="kTvGGd1snGf1LyFvvZhJyD">
+        <div class="panel" data-page-node-id="PqLqZK0F1C7twXsWwLzVQs">
+          <div class="panel-h" data-page-node-id="fnUCoodrY8oyHMk1egqR6n">库概览 <small data-page-node-id="ICA8BmDrMqDmddIGA71ata">条目 / 分类 / 总时长</small></div>
+          <div id="medStats" class="pan-box" data-page-node-id="E2gTVyAnsp6uOLn2i6cNgn"></div>
         </div>
 
-        <div class="panel">
-          <div class="panel-h">已登记目录 <small>不删磁盘文件，只索引</small></div>
-          <div class="pan-add">
-            <input id="medRootPath" class="mini-input" placeholder="媒体目录绝对路径，如 D:\Music" />
-            <button class="ghostbtn" id="btnMediaAddRoot">登记</button>
+        <div class="panel" data-page-node-id="DgjbZPOCcxzKA2gDyeFAb0">
+          <div class="panel-h" data-page-node-id="ThOCHXp1CZX93iOikxOtD7">已登记目录 <small data-page-node-id="GBPJoIbeYs4wzTjftg6EcU">不删磁盘文件，只索引</small></div>
+          <div class="pan-add" data-page-node-id="VzxwWKtL35jOFbCOGIObRq">
+            <input id="medRootPath" class="mini-input" placeholder="媒体目录绝对路径，如 D:\Music" data-page-node-id="TrEgTKy5FwisrxKobgwQEV" />
+            <button class="ghostbtn" id="btnMediaAddRoot" data-page-node-id="ZyDrMpMQFqT4AFisDYJFNI">登记</button>
           </div>
-          <div id="medRoots" class="pan-box"></div>
+          <div id="medRoots" class="pan-box" data-page-node-id="NpFE0zEFJcsNUpjLdc0Suj"></div>
         </div>
 
-        <div class="panel span2">
-          <div class="panel-h">条目 <small>未解析的字段显示为 —，不编造</small></div>
-          <div class="med-tabs">
-            <button class="med-tab on" data-cat="">全部</button>
-            <button class="med-tab" data-cat="audio">音频</button>
-            <button class="med-tab" data-cat="video">视频</button>
-            <button class="med-tab" data-cat="image">图片</button>
-            <input id="medSearch" class="mini-input" placeholder="按标题 / 艺术家 / 专辑搜" />
+        <div class="panel span2" data-page-node-id="DnZsRmFLlnK776lKeqqA13">
+          <div class="panel-h" data-page-node-id="PaFUXBXFTI7OQ3hnTVXm5s">条目 <small data-page-node-id="auNreF3yLef2d0LC12TcW7">未解析的字段显示为 —，不编造</small></div>
+          <div class="med-tabs" data-page-node-id="qmHuxVkaVQ33SJFPImaHTo">
+            <button class="med-tab on" data-cat="" data-page-node-id="3RvDeGTq3hTfbpKOCXWvDv">全部</button>
+            <button class="med-tab" data-cat="audio" data-page-node-id="J8zrRF4pGmX59ZEccb9zai">音频</button>
+            <button class="med-tab" data-cat="video" data-page-node-id="zwFJ7zUCblLIutFu6fC1Ga">视频</button>
+            <button class="med-tab" data-cat="image" data-page-node-id="57Nqu5jfeh3KZW9fdgnI3m">图片</button>
+            <input id="medSearch" class="mini-input" placeholder="按标题 / 艺术家 / 专辑搜" data-page-node-id="MCoV9MHILPGCOitDE3GWDx" />
           </div>
-          <div id="medItems" class="pan-box"></div>
+          <div id="medItems" class="pan-box" data-page-node-id="A7OGUpxfTpNj9vjIBKf4J1"></div>
         </div>
       </div>
     </section>
   </main>
 
   <!-- ---------- 右侧 HUD ---------- -->
-  <aside class="hud">
-    <div class="hud-block">
-      <div class="hud-h">核心状态</div>
-      <div class="stat"><span>运行</span><b id="hRun">—</b></div>
-      <div class="stat"><span>队列</span><b id="hQueue">0</b></div>
-      <div class="stat"><span>记忆</span><b id="hMem">0</b></div>
-      <div class="stat"><span>运行时长</span><b id="hUptime">0s</b></div>
+  <aside class="hud" data-page-node-id="4qFHACDfXynxogQvQ04gxK">
+    <div class="hud-block" data-page-node-id="qd14qzM4JkrVMEQBA72sAW">
+      <div class="hud-h" data-page-node-id="dXxcm8IDRcmFgsGDwRxPYw">核心状态</div>
+      <div class="stat" data-page-node-id="ZUVz9QxmxV4mN5iNl4y7h0"><span data-page-node-id="mHCqIRiPghroDYxY0qO47L">运行</span><b id="hRun" data-page-node-id="atdis5U2ZgUtRPxMK4Wivm">—</b></div>
+      <div class="stat" data-page-node-id="FpngCn4qCr8r9FhBSKF7Ei"><span data-page-node-id="3zVxue1AiU2j2aeZ08YM53">队列</span><b id="hQueue" data-page-node-id="Nvr9l7GjPVbH8D70T1aZvO">0</b></div>
+      <div class="stat" data-page-node-id="9RuMFms3ggb2HPHhCUp2w0"><span data-page-node-id="AeaXWCDCXDShTmtd7KrkPF">记忆</span><b id="hMem" data-page-node-id="FpFHB54GYil7JlRzifjIPh">0</b></div>
+      <div class="stat" data-page-node-id="vpM9UE4zlGj891N8GLYwem"><span data-page-node-id="mKwIqmnkFWoJ9rO3Ravt85">运行时长</span><b id="hUptime" data-page-node-id="SuF06yngwivT0zyRkiuaF9">0s</b></div>
     </div>
 
-    <div class="hud-block">
-      <div class="hud-h">心跳节律</div>
-      <canvas id="beat" class="beat"></canvas>
-      <div class="stat"><span>下一跳</span><b id="hNext">—</b></div>
+    <div class="hud-block" data-page-node-id="pN8eUsYYpYvefTDrr1GHiT">
+      <div class="hud-h" data-page-node-id="LDFG9IB6I3eUpkhSg50Rel">心跳节律</div>
+      <canvas id="beat" class="beat" data-page-node-id="valgBwKcYpkGAlriFdVJhJ"></canvas>
+      <div class="stat" data-page-node-id="5EsU8MRSLPt8Zgc9nbx2sU"><span data-page-node-id="Uvt2w3uHg9OPUarg9XCy4g">下一跳</span><b id="hNext" data-page-node-id="8uTQT5Dq3iOQHWjzRNihAv">—</b></div>
     </div>
 
-    <div class="hud-block grow">
-      <div class="hud-h">思考流</div>
-      <div class="thinkfeed" id="thinkFeed"></div>
+    <div class="hud-block grow" data-page-node-id="Dc3eskBcqBHUASN5Tig7Ck">
+      <div class="hud-h" data-page-node-id="JLnuV9qzF6PEf86Sy2JA4b">思考流</div>
+      <div class="thinkfeed" id="thinkFeed" data-page-node-id="HzrCZD1MD6IGtiqPBZGm4k"></div>
     </div>
 
-    <div class="hud-block">
-      <div class="hud-h">工具活动</div>
-      <div class="toolact" id="toolAct"></div>
+    <div class="hud-block" data-page-node-id="T6XBzrZZUwcNTs1FMraRAu">
+      <div class="hud-h" data-page-node-id="yOJdOswUfNTtNeyBREXwJr">工具活动</div>
+      <div class="toolact" id="toolAct" data-page-node-id="b1LKhaUNZNVaJvcO5N1ROx"></div>
     </div>
   </aside>
 </div>
 
 <!-- ============================ 语音球 ============================ -->
-<div id="voiceOverlay" class="voice-overlay hidden">
-  <div class="vo-card">
-    <canvas id="voiceOrb" class="vo-orb"></canvas>
-    <div class="vo-hint" id="voHint">正在聆听…</div>
-    <div class="vo-meter"><i id="voMeter"></i></div>
-    <div class="vo-timer" id="voTimer">0.0s</div>
-    <div class="vo-actions">
-      <button class="ghostbtn" id="voCancel">取消</button>
-      <button class="sendbtn" id="voSend">说完了</button>
+<div id="voiceOverlay" class="voice-overlay hidden" data-page-node-id="k20Mx7YrBrc7Ygfv0oNPq7">
+  <div class="vo-card" data-page-node-id="iGR2SxIoq7OC9EwL3WZOVJ">
+    <canvas id="voiceOrb" class="vo-orb" data-page-node-id="j5Yz3map3JEKcRnfnLG2wi"></canvas>
+    <div class="vo-hint" id="voHint" data-page-node-id="eIYi3Yj3vIbf0MxOs07fcz">正在聆听…</div>
+    <div class="vo-meter" data-page-node-id="HAac8Ie38riAP1Sgmodeio"><i id="voMeter" data-page-node-id="6mUCl7SuEXkkkBnJPUMDce"></i></div>
+    <div class="vo-timer" id="voTimer" data-page-node-id="fnUg4TludMWUWABT80fPQb">0.0s</div>
+    <div class="vo-actions" data-page-node-id="U8l4oXv2QMVSl41vQfis5S">
+      <button class="ghostbtn" id="voCancel" data-page-node-id="ge9C3zEJoloBjygNJvEd6x">取消</button>
+      <button class="sendbtn" id="voSend" data-page-node-id="QdGoQqEYlDTdYbStCFErfe">说完了</button>
     </div>
-    <div class="vo-mode" id="voMode">—</div>
+    <div class="vo-mode" id="voMode" data-page-node-id="Q3AITtetoG6xzlmCD4DzDr">—</div>
   </div>
 </div>
 
 <!-- ============================ 激活遮罩 ============================ -->
-<div id="activate" class="modal hidden">
-  <div class="modal-card">
-    <h2>接入大脑</h2>
-    <p class="sub">黑武士未接入模型时也能运行——本地认知内核会接管回复，但无法做复杂推理。
+<div id="activate" class="modal hidden" data-page-node-id="kIPhPxfBA8iSkPYtPCUsje">
+  <div class="modal-card" data-page-node-id="PFP7BEFDEmhvBB6MmxhSnu">
+    <h2 data-page-node-id="5xVaXc6uykuwIsfKmF3mHD">接入大脑</h2>
+    <p class="sub" data-page-node-id="6iEbjOZz0FBaHr83qOeyPp">黑武士未接入模型时也能运行——本地认知内核会接管回复，但无法做复杂推理。
        填入任意 OpenAI 兼容的 Key 即可解锁完整能力；也可以直接跳过。</p>
-    <label class="field"><span>供应商</span><select id="actProvider"></select></label>
-    <label class="field"><span>API Key</span><input id="actKey" type="password" placeholder="sk-…" /></label>
-    <label class="field"><span>模型</span><input id="actModel" placeholder="留空用推荐模型" /></label>
-    <div class="modal-foot">
-      <button class="ghostbtn" id="actSkip">稍后（离线内核）</button>
-      <button class="sendbtn" id="actGo">连接</button>
+    <label class="field" data-page-node-id="xSjAO7VbrEAXbFibmus0Cp"><span data-page-node-id="W4GmtHc308FyyYwxFWEmyr">供应商</span><select id="actProvider" data-page-node-id="8XQatUt21USwTH1Bt6zc4v"></select></label>
+    <label class="field" data-page-node-id="IURYpFBY8GZ78reKZIqpZ0"><span data-page-node-id="WlKye6dDFfnsOSD2TKaDDq">API Key</span><input id="actKey" type="password" placeholder="sk-…" data-page-node-id="fIBSATdrcOWnxaQqFYHLUI" /></label>
+    <label class="field" data-page-node-id="lMhg9TJuCyv3KgGpBOji5I"><span data-page-node-id="ZyK2XfUMAQivvN5XiBgKQ6">模型</span><input id="actModel" placeholder="留空用推荐模型" data-page-node-id="c8XTJy7N3ouyBxQIr4sdUd" /></label>
+    <div class="modal-foot" data-page-node-id="Li3MSTOjt7cI3kNdXCseJB">
+      <button class="ghostbtn" id="actSkip" data-page-node-id="GQ1Wn6VSFcYeBu095C3mQ5">稍后（离线内核）</button>
+      <button class="sendbtn" id="actGo" data-page-node-id="4zD6LMqGglklXVqfMuYqnK">连接</button>
     </div>
-    <div class="act-msg" id="actMsg"></div>
+    <div class="act-msg" id="actMsg" data-page-node-id="lOH1CgRcWFZe6XIM6I6vA4"></div>
   </div>
 </div>
 
-<div id="toast" class="toast"></div>
+<div id="toast" class="toast" data-page-node-id="2XrbL7ORAjtYTn7IBrJoei"></div>
 
 <script src="./js/api.js"></script>
 <script src="./js/viz.js"></script>
