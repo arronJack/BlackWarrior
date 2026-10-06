@@ -141,9 +141,9 @@ def probe() -> Dict[str, Any]:
         out["api"] = str(getattr(pasm2, "__api_version__", "") or "")
     except Exception as ex:
         out["reason"] = (
-            "未安装 pasm2（V2 底座在 PASM 主仓里，主仓包名从未发布到 PyPI；"
-            "装法：pip install --no-deps git+https://gitee.com/arronzheng/PASM.git"
-            f"）：{type(ex).__name__}: {ex}")
+            "未安装 pasm2（V2 底座；装法：pip install pasm2，"
+            "只需 numpy 不拖 torch）"
+            f"：{type(ex).__name__}: {ex}")
         return out
     try:
         from pasm2.skills.kit import PROFILES

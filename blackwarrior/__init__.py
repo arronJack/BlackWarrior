@@ -214,6 +214,7 @@ def selftest() -> bool:
     # 踩过坑：README 写 `pip install pasm-agent`，而那个包名从未发布到 PyPI
     #（PASM 主仓的 name 就是它，但没发过），用户装完直接报
     # `No matching distribution found`。文档里的包名必须可核验。
+    # （V2 底座后来以 `pasm2` 之名正式上架，这条守卫就是那次踩坑的产物。）
     try:
         from pathlib import Path as _P2
 

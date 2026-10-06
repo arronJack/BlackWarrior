@@ -101,7 +101,8 @@ DEFAULTS: Dict[str, Any] = {
     "prefetch_enabled": False,   # 周期性 URL 预取注入上下文
 
     # ---- PASM V2 十九层认知底座（v0.3）----
-    # V2 需要 numpy + pasm-agent，是**可选增强**：没装就降级到 V1/内置，
+    # V2 需要 numpy + pasm2（`pip install pasm2`），是**可选增强**：
+    # 没装就降级到 V1/内置，
     # 并在「心智」页明确标注，绝不把降级伪装成正常。
     "pasm2_enabled": True,
     "pasm2_profile": "full",     # minimal / standard / full / brainwide

@@ -131,7 +131,7 @@ v0.3 的象量是 sha256 哈希 —— 确定性有，**语义没有**（"苹果
 
 | 档位 | 条件 | 表现 |
 |---|---|---|
-| `pasm2` | 装了 `numpy` + `pasm-agent` | 十九层真实活跃度、安全层闸门、反事实推理、成长闭环 |
+| `pasm2` | 装了 `numpy` + `pasm2` | 十九层真实活跃度、安全层闸门、反事实推理、成长闭环 |
 | `pasm1` | 无 pasm2，有 `pasm-skills` | 记忆 / 情绪 / 焦点 / 塑形（内核六项） |
 | `builtin` | 都没有 | 内置等价实现，功能完整、语义检索较弱 |
 
@@ -246,35 +246,45 @@ pip install psutil                # 本机资源探测（可选）
 
 #### 装 PASM V2 十九层底座（重要）
 
-**V2 底座（`pasm2`）在 PASM 主仓里，而主仓的包名 `pasm-agent` 从未发布到 PyPI**，
-所以 `pip install pasm-agent` 会直接报 `No matching distribution found`。
-目前只能从源码装：
+V2 底座在 PyPI 上的包名就是 **`pasm2`**：
 
 ```bash
-# 方式 A：直接从 Git 仓库装（推荐）
+pip install pasm2
+```
+
+它**只依赖 numpy**（CPU 毫秒级，不拖 torch），装完即可用。验证：
+
+```bash
+python -c "import pasm2; print(pasm2.__version__, pasm2.__stage__)"
+# 2.0.0a12 11-second-audit-fixes
+```
+
+若要从源码装最新版 Alpha（PyPI 版可能滞后一两版）：
+
+```bash
+# 方式 A：直接从 Git 仓库装
 pip install --no-deps git+https://gitee.com/arronzheng/PASM.git
 
 # 方式 B：已有本地克隆
 cd /path/to/PASM && pip install --no-deps .
 ```
 
-**为什么加 `--no-deps`**：PASM 主仓声明了 `torch>=2.0`、`fastapi`、`uvicorn`、`pydantic`，
-其中 torch 是数 GB 的下载量。而 **V2 底座本身只需要 numpy** —— 主仓的
-`packages.find.include` 已含 `pasm2*`，所以 `--no-deps` 装出来的包能直接
-`import pasm2`，不会拖 torch。只有你还要用 PASM V1 引擎的 torch 情绪系统时，
-才去掉 `--no-deps`。
+**为什么源码装要加 `--no-deps`**：PASM **主仓**声明了 `torch>=2.0`、`fastapi`、
+`uvicorn`、`pydantic`，其中 torch 是数 GB 下载。而 V2 底座本身只需 numpy，
+主仓的 `packages.find.include` 已含 `pasm2*`，所以 `--no-deps` 装出来就能直接
+`import pasm2`，不必为 V2 拖 torch。只有你还要用 V1 引擎的 torch 情绪系统时
+才去掉它。
 
-验证装没装成功：
-
-```bash
-blackwarrior selftest
-# 看末尾的档位与嵌入后端申报
-```
-
-> ⚠️ **包名避雷**：`pasm` 这个名字在 PyPI 上被一个**完全无关的音频度量包**占用
-> （`pip install pasm` 会装错东西）。PASM 生态的包只有
-> `pasm-skills`（基座）/ `pasm-agents`（成品智能体集）/ `pasm-framework`（防腐层），
-> 引擎与 V2 底座目前只走源码。
+> ⚠️ **包名避雷**：`pip install pasm` 会装到一个**完全无关的音频度量包**（名字撞车）。
+> PASM 生态正确的包名是：
+> | 包名 | 是什么 |
+> |---|---|
+> | `pasm2` | **V2.0 十九层认知底座**（黑武士 v0.3+ 用这个） |
+> | `pasm-skills` | V1 认知基座 SDK |
+> | `pasm-agents` | 成品智能体集 |
+> | `pasm-framework` | 应用开发框架（防腐层） |
+>
+> `pasm-agent` **不是**包名（那是主仓 pyproject 里的 `name`，从未发布），别去装它。
 
 验证装没装成功：
 

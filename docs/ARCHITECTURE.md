@@ -52,13 +52,14 @@ Electron 崩了内核还在跑；内核挂了壳能弹窗降级——两边可�
 | `pasm1` | 只有 V1 引擎 | 装了 `pasm` extra |
 | `builtin` | 纯内置实现 | 都没装 |
 
-> **V2 底座装法**：`pasm2` 在 PASM 主仓里，而主仓包名 `pasm-agent`
-> **从未发布到 PyPI**（`pip install pasm-agent` 会报
-> `No matching distribution found`）。只能从源码装，且 V2 只需 numpy：
+> **V2 底座装法**：`pasm2` 已发布到 PyPI，直接装即可（只需 numpy，不拖 torch）：
 >
 > ```bash
-> pip install --no-deps git+https://gitee.com/arronzheng/PASM.git
+> pip install pasm2
 > ```
+>
+> 从源码装最新版 Alpha 用 `pip install --no-deps git+https://gitee.com/arronzheng/PASM.git`
+> （`--no-deps` 是为了不让主仓的 torch 依赖被拖进来 —— V2 底座只需 numpy）。
 >
 > `--no-deps` 是为了跳过主仓声明的 `torch>=2.0`（数 GB）——V2 底座本身不 import torch。
 

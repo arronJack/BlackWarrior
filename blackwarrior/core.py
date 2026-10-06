@@ -113,7 +113,7 @@ class WarriorCore:
     def _build_pasm2(self) -> Any:
         """按配置构建 PASM V2 桥接层。
 
-        V2 是**可选增强**（需要 numpy + pasm-agent）。装了就用真底座，
+        V2 是**可选增强**（``pip install pasm2`` + numpy）。装了就用真底座，
         没装就保持 V1 引擎 / 内置降级，并在 ``/status`` 与「心智」页
         **明确标注原因**——不把降级伪装成正常。
         """
