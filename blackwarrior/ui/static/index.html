@@ -67,6 +67,9 @@
     <button class="nav-btn" data-view="settings" title="设置">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2.2 2.2M16.8 16.8 19 19M19 5l-2.2 2.2M7.2 16.8 5 19"/></svg><em>设置</em>
     </button>
+    <button class="nav-btn" data-view="panorama" title="全景">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg><em>全景</em>
+    </button>
 
     <div class="rail-foot">
       <button id="btnPower" class="nav-btn power" title="停止 / 启动主循环">
@@ -191,6 +194,16 @@
           <div class="bars" id="moodBars"></div>
         </div>
 
+        <div class="panel">
+          <div class="panel-h">认知雷达 <small>六维实时</small></div>
+          <canvas id="cogRadar" class="chart-sm"></canvas>
+        </div>
+
+        <div class="panel">
+          <div class="panel-h">记忆保留度 <small>全库均值</small></div>
+          <canvas id="memRing" class="chart-sm"></canvas>
+        </div>
+
         <div class="panel span2">
           <div class="panel-h">话题焦点栈 <small>带衰减</small></div>
           <div class="focus-list" id="focusList"></div>
@@ -303,6 +316,40 @@
         </div>
       </div>
     </section>
+
+    <!-- ========== 全景（v0.2） ========== -->
+    <section class="view" id="view-panorama">
+      <header class="view-head">
+        <div>
+          <h1>全景</h1>
+          <p class="sub">用户画像 · 环境面板 · 预取缓存 —— 黑武士"更懂你"的底座</p>
+        </div>
+        <div class="head-right">
+          <button class="ghostbtn" id="btnRefetchPanels">刷新面板</button>
+        </div>
+      </header>
+
+      <div class="pan-grid">
+        <div class="panel">
+          <div class="panel-h">用户画像 <small>结构化 · 带置信度与依据</small></div>
+          <div id="panProfile" class="pan-box"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-h">信息面板 <small>天气 / 热点 / 人物卡</small></div>
+          <div id="panPanels" class="pan-box"></div>
+        </div>
+
+        <div class="panel span2">
+          <div class="panel-h">预取缓存 <small>周期刷新并注入上下文</small></div>
+          <div class="pan-add">
+            <input id="panPrefetchUrl" class="mini-input" placeholder="登记要预取的网址，如 https://wttr.in/Beijing?format=3" />
+            <button class="ghostbtn" id="btnAddPrefetch">登记</button>
+          </div>
+          <div id="panPrefetch" class="pan-box"></div>
+        </div>
+      </div>
+    </section>
   </main>
 
   <!-- ---------- 右侧 HUD ---------- -->
@@ -331,6 +378,21 @@
       <div class="toolact" id="toolAct"></div>
     </div>
   </aside>
+</div>
+
+<!-- ============================ 语音球 ============================ -->
+<div id="voiceOverlay" class="voice-overlay hidden">
+  <div class="vo-card">
+    <canvas id="voiceOrb" class="vo-orb"></canvas>
+    <div class="vo-hint" id="voHint">正在聆听…</div>
+    <div class="vo-meter"><i id="voMeter"></i></div>
+    <div class="vo-timer" id="voTimer">0.0s</div>
+    <div class="vo-actions">
+      <button class="ghostbtn" id="voCancel">取消</button>
+      <button class="sendbtn" id="voSend">说完了</button>
+    </div>
+    <div class="vo-mode" id="voMode">—</div>
+  </div>
 </div>
 
 <!-- ============================ 激活遮罩 ============================ -->

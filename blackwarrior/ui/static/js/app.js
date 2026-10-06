@@ -80,6 +80,7 @@
     bindActivate();
     bindPower();
     bindVoice();
+    bindPanorama();
 
     // 先拿配置（语音开关来自它），再连事件流
     api.settings().then(cfg => {
@@ -114,9 +115,11 @@
         $('view-' + v).classList.add('active');
         S.view = v;
         if (v === 'memory') { loadMemories(); }
-        if (v === 'cognition') { loadCognition(); }
+        // 雷达要用记忆保留度，所以进认知页时顺带拉一次记忆
+        if (v === 'cognition') { loadCognition(); loadMemories(); }
         if (v === 'activity') { loadActivity(); }
         if (v === 'settings') { loadSettings(); }
+        if (v === 'panorama') { loadPanorama(); }
       });
     });
   }
@@ -499,6 +502,8 @@
       renderMemories(S.memories);
       S.graph.setData(S.memories);
       viz.drawRetention($('retentionChart'), S.memories);
+      // 雷达的"记忆/经验"两维依赖这里的数据，异步回来后补画一次
+      if (S.view === 'cognition') { loadCognition(); }
     }).catch(() => {});
   }
 
@@ -600,6 +605,21 @@
           fl.appendChild(d);
         });
       }
+
+      // 认知雷达：这六维里有一半是同类项目根本没有的量
+      const rets = S.memories.map(m => Number(m.retention === undefined ? 1 : m.retention));
+      const avgRet = rets.length ? (rets.reduce((a, b) => a + b, 0) / rets.length) : 0;
+      viz.drawRadar($('cogRadar'), [
+        { label: '情绪', value: (mood + 1) / 2, color: '#37e6ff' },
+        { label: '好奇', value: Number(aff.curiosity || 0), color: '#8b5cff' },
+        { label: '误差', value: Number(aff.prediction_error || 0), color: '#ffc44d' },
+        { label: '焦点', value: Math.min(1, focus.length / 6), color: '#ff3b5c' },
+        { label: '记忆', value: avgRet, color: '#3bffa5' },
+        { label: '经验', value: Math.min(1, S.memories.length / 50), color: '#9fd9ff' }
+      ]);
+      viz.drawRing($('memRing'), avgRet,
+                   Math.round(avgRet * 100) + '%',
+                   S.memories.length + ' 条记忆');
 
       $('cogJson').textContent = JSON.stringify(S.cog, null, 2);
     }).catch(() => {});
@@ -805,81 +825,128 @@
    */
   function bindVoice() {
     const mic = $('btnMic'), speak = $('btnSpeak');
-    const cap = BW.voice.available();
 
-    if (!cap.asr) {
-      mic.disabled = true;
-      mic.title = cap.asr_note;
-    }
-    if (!cap.tts) {
-      speak.classList.add('off');
-      speak.title = '当前环境不支持语音合成';
-    }
+    // 启动即探一次后端语音状态：决定麦克风是"可用/降级/置灰"
+    BW.voice.refreshStatus().then(() => { paintVoiceState(); paintSpeechState(); });
 
-    mic.addEventListener('click', () => {
-      if (S.voice.recording) {
-        BW.voice.stopAsr();
-        setRecording(false);
-        return;
-      }
-      if (!BW.voice.available().asr) { toast(cap.asr_note, true); return; }
-      const input = $('input');
-      const before = input.value;
-      setRecording(true);
-      BW.voice.startAsr({
-        onPartial: (t) => { input.value = before ? before + t : t; },
-        onFinal: (t) => {
-          setRecording(false);
-          input.value = before ? (before + t).trim() : t;
-          if (input.value.trim()) { $('composer').requestSubmit(); }
-        },
-        onEnd: () => setRecording(false),
-        onError: (msg) => { setRecording(false); toast(msg, true); }
-      });
-    });
-
+    mic.addEventListener('click', () => { startVoiceInput(); });
     speak.addEventListener('click', () => {
       const next = !S.voice.tts;
       S.voice.tts = next;
       paintSpeakBtn();
       if (!next) { BW.voice.stopSpeak(); }
-      // 顺手把偏好写回配置，下次启动保持
       api.save({ tts_enabled: next }).then(cfg => { S.settings = cfg || S.settings; })
         .catch(() => {});
     });
+
+    $('voCancel').addEventListener('click', () => { finishVoice(true); });
+    $('voSend').addEventListener('click', () => { finishVoice(false); });
   }
 
-  function setRecording(on) {
-    S.voice.recording = !!on;
+  /** 打开语音球并开始采集。 */
+  function startVoiceInput() {
+    const pick = BW.voice.pickAsrMode();
+    if (pick.mode === 'none') { toast(pick.why, true); return; }
+
+    S.voice.mode = pick.mode;
+    $('voMode').textContent = pick.why;
+    $('voHint').textContent = '正在聆听…';
+    $('voTimer').textContent = '0.0s';
+    $('voiceOverlay').classList.remove('hidden');
+    BW.voice.bindOrb($('voiceOrb'));
+    S.voice.t0 = Date.now();
+    S.voice.timer = setInterval(() => {
+      $('voTimer').textContent =
+        ((Date.now() - S.voice.t0) / 1000).toFixed(1) + 's';
+    }, 100);
+
+    const onLevel = (lv) => { $('voMeter').style.width = Math.round(lv * 100) + '%'; };
+    const onError = (msg) => { finishVoice(true); toast(msg, true); };
+
+    if (pick.mode === 'cloud') {
+      BW.voice.startRecording({ onLevel: onLevel, onError: onError }).then(ok => {
+        if (!ok) { finishVoice(true); }
+      });
+    } else {
+      // 浏览器通道：无频谱数据，语音球走内置的呼吸动画
+      const input = $('input');
+      const before = input.value;
+      BW.voice.startBrowserAsr({
+        onPartial: (t) => { input.value = before ? before + t : t; },
+        onFinal: (t) => {
+          input.value = before ? (before + t).trim() : t;
+          finishVoice(true, true);
+          if (input.value.trim()) { $('composer').requestSubmit(); }
+        },
+        onError: onError
+      });
+    }
+  }
+
+  /** 结束采集。cancel=true 丢弃结果。 */
+  function finishVoice(cancel, skipSend) {
+    clearInterval(S.voice.timer);
+    $('voiceOverlay').classList.add('hidden');
+    BW.voice.unbindOrb();
+    $('voMeter').style.width = '0%';
+
+    if (S.voice.mode === 'browser') {
+      BW.voice.stopBrowserAsr();
+      if (skipSend !== true) { return; }
+      return;
+    }
+    if (S.voice.mode !== 'cloud') { return; }
+
+    $('voHint').textContent = '识别中…';
+    BW.voice.stopRecording().then(blob => {
+      if (cancel || !blob) { $('voHint').textContent = '正在聆听…'; return; }
+      return BW.voice.transcribe(blob).then(res => {
+        const text = (res && res.text) || '';
+        if (!text) { toast(res && res.empty ? '没听清，再说一次' : '未识别到内容', true); return; }
+        const input = $('input');
+        input.value = input.value ? (input.value + text).trim() : text;
+        input.dispatchEvent(new Event('input'));
+        $('composer').requestSubmit();
+      }).catch(err => {
+        toast(err.message || '转写失败', true);
+      });
+    }).finally(() => { $('voHint').textContent = '正在聆听…'; });
+  }
+
+  function paintVoiceState() {
+    const pick = BW.voice.pickAsrMode();
     const mic = $('btnMic');
-    mic.classList.toggle('rec', !!on);
-    mic.title = on ? '正在聆听…点击结束' : '语音输入（浏览器语音识别）';
-    if (!on) { return; }
+    mic.disabled = (pick.mode === 'none');
+    mic.title = pick.mode === 'none'
+      ? pick.why
+      : ('语音输入 · ' + pick.why);
+    S.voice.mode = pick.mode === 'none' ? null : pick.mode;
   }
 
   function applySpeechConfig(cfg) {
     cfg = cfg || {};
-    const canAsr = BW.voice.available().asr;
-    const canTts = BW.voice.available().tts;
+    const canTts = BW.voice.available().browser_tts;
     S.voice.tts = !!cfg.tts_enabled && canTts;
-    S.voice.asr = !!cfg.asr_enabled && canAsr;
-    if (!canAsr) { $('btnMic').disabled = true; }
     paintSpeakBtn();
+    BW.voice.refreshStatus().then(() => { paintVoiceState(); paintSpeechState(); });
   }
 
   function paintSpeakBtn() {
     const b = $('btnSpeak');
     if (!b) { return; }
     b.classList.toggle('on', !!S.voice.tts);
-    b.classList.toggle('off', !S.voice.tts && !BW.voice.available().tts);
+    b.classList.toggle('off', !S.voice.tts && !BW.voice.available().browser_tts);
   }
 
   function paintSpeechState() {
     const cap = BW.voice.available();
+    const cloud = cap.cloud || {};
     const voices = BW.voice.listVoices();
-    $('asrState').textContent = cap.asr ? '可用（联网）' : '不可用';
-    $('ttsState').textContent = cap.tts
-      ? ('可用 · ' + (voices.length ? voices.length + ' 个音色' : '系统默认')) : '不可用';
+    const mode = BW.voice.pickAsrMode();
+    $('asrState').textContent = mode.mode === 'cloud' ? '云端转写（可用）'
+      : (mode.mode === 'browser' ? '浏览器识别' : '不可用：' + (cloud.asr_reason || mode.why));
+    $('ttsState').textContent = cap.browser_tts
+      ? ('本地可用 · ' + (voices.length ? voices.length + ' 个音色' : '系统默认')) : '不可用';
   }
 
   /** 回复落定时朗读（受 tts 开关控制）。 */
@@ -901,6 +968,86 @@
       fn.then(() => { toast(S.running ? '主循环已停止' : '主循环已启动'); refresh(); })
         .catch(e => toast(e.message, true));
     });
+  }
+
+  // ============================================================ 全景（v0.2）
+  function bindPanorama() {
+    const add = $('btnAddPrefetch');
+    if (add) {
+      add.addEventListener('click', () => {
+        const url = $('panPrefetchUrl').value.trim();
+        if (!url) { return; }
+        api.addPrefetch(url).then(r => {
+          toast(r && r.ok ? '已登记预取' : ('失败：' + ((r || {}).error || '未知')));
+          $('panPrefetchUrl').value = '';
+          loadPanorama();
+        }).catch(e => toast(e.message, true));
+      });
+    }
+    const rf = $('btnRefetchPanels');
+    if (rf) {
+      rf.addEventListener('click', () => { loadPanorama(); toast('已刷新'); });
+    }
+  }
+
+  function loadPanorama() {
+    // 1) 用户画像
+    api.profile().then(r => {
+      const box = $('panProfile');
+      if (!box) { return; }
+      const items = (r && r.items) ? r.items : {};
+      const keys = Object.keys(items);
+      if (!keys.length) {
+        box.innerHTML = '<div class="empty" style="padding:18px">还没有了解你——聊聊自己，' +
+          '或让模型在对话里记住你（"我叫小志，做 AI 开发"）。</div>';
+        return;
+      }
+      const label = (k) => ({
+        name: '姓名', role: '身份/角色', domain: '领域', expertise: '专长',
+        projects: '项目', preferences: '偏好', communication_style: '沟通风格',
+        timezone: '时区'
+      }[k] || k);
+      box.innerHTML = '<div class="prof-grid">' + keys.map(k => {
+        const it = items[k] || {};
+        return '<div class="prof-card"><div class="pk">' + fmt.esc(label(k)) + '</div>' +
+               '<div class="pv">' + fmt.esc(it.value || '') + '</div>' +
+               '<div class="pd">置信 ' + fmt.num(it.confidence, 1) + '</div></div>';
+      }).join('') + '</div>';
+    }).catch(() => {});
+
+    // 2) 信息面板
+    api.panels().then(r => {
+      const box = $('panPanels');
+      if (!box) { return; }
+      const p = r || {};
+      const w = p.weather || {}, h = p.hotspot || {}, ps = p.person || {};
+      const card = (t, txt) =>
+        '<div class="pan-card"><div class="ph">' + t + '</div>' +
+        '<div class="pb">' + fmt.esc(txt) + '</div></div>';
+      let html = card('天气',
+        w.available ? (w.summary || '') : (w.note || w.error || '未开启'));
+      html += card('热点',
+        h.available ? '已开启' : (h.note || '未开启（配置 web_search 后可接入）'));
+      html += card('人物卡（' + (ps.count || 0) + '）',
+        (ps.items ? Object.keys(ps.items).slice(0, 12).join('、') : '') || '—');
+      box.innerHTML = html;
+    }).catch(() => {});
+
+    // 3) 预取缓存
+    api.prefetch().then(r => {
+      const box = $('panPrefetch');
+      if (!box) { return; }
+      const items = (r && r.items) ? r.items : [];
+      if (!items.length) {
+        box.innerHTML = '<div class="empty" style="padding:18px">暂无预取缓存。' +
+          '在上方登记一个网址（如天气页），黑武士会在心跳时自动刷新并注入上下文。</div>';
+        return;
+      }
+      box.innerHTML = items.map(it =>
+        '<div class="pf-item"><span class="u">' + fmt.esc(it.url || '') + '</span>' +
+        '<span class="c">' + fmt.esc((it.content || '').slice(0, 140)) + '</span></div>'
+      ).join('');
+    }).catch(() => {});
   }
 
   // ============================================================ Toast

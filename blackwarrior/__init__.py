@@ -110,6 +110,25 @@ def selftest() -> bool:
     check(rep2["error"] != rep["error"], "预测误差随输入变化")
     check(0.6 <= at.suggest_tick_scale() <= 1.6, "心跳缩放系数在合理区间")
 
+    # 8. 用户画像 / 信息面板 / 预取缓存（v0.2）
+    from .brain.profile import UserProfile
+    up = UserProfile(st, cfg)
+    check(up.set("name", "小志", evidence="我叫小志", confidence=0.9),
+          "画像写入成功")
+    check((up.get("name") or {}).get("value") == "小志", "画像读取成功")
+    check("小志" in up.to_prompt(), "画像可渲染进提示词")
+    from .runtime.panels import PanelManager
+    pm = PanelManager(cfg, st)
+    w = pm.get("weather")
+    check(w.get("available") is False and ("note" in w or "error" in w),
+          "面板未配置时诚实降级（不伪造天气）")
+    from .runtime.prefetch import PrefetchCache
+    pf = PrefetchCache(cfg, st)
+    pf.add("https://example.com/x", content="测试内容", ttl=3600)
+    check(len(pf.serve()) >= 1, "预取缓存可服务")
+    pf.clear()
+    check(len(pf.serve()) == 0, "预取缓存可清空")
+
     print("-" * 58)
     print("自检结果：" + ("通过" if ok else "失败"))
     return ok

@@ -6,7 +6,7 @@
 
 <div align="center">
 
-![version](https://img.shields.io/badge/version-0.1.0-37e6ff)
+![version](https://img.shields.io/badge/version-0.2.0-37e6ff)
 ![python](https://img.shields.io/badge/python-3.10%2B-8b5cff)
 ![electron](https://img.shields.io/badge/electron-33-9feaf9)
 ![license](https://img.shields.io/badge/license-MIT-3bffa5)
@@ -39,6 +39,11 @@
 | 档位诚实度 | 常把降级伪装成正常 | **永不隐藏降级**：`bionic/core/light/none` 在状态页明示 |
 | 自主性 | 空闲轮询 | 8 级心跳决策 + 预测误差缩放 + 提醒独立计时源 |
 | 安全 | — | 工具风险三级 + 路径沙箱 + Shell 黑名单 + 局域网强制 Token |
+| 用户画像 | 结构化 profile（角色/领域/专长/偏好…） | **v0.2 补齐**：结构化画像 + 启发式/LLM 双抽取 + 置信度与依据，注入上下文 |
+| 中文检索 | FTS5 trigram 全文 | **v0.2 补齐**：同款 FTS5 trigram 兜底轻量档中文子串检索 |
+| 信息面板 | 天气/热点/人物卡常驻预喂 | **v0.2 补齐**：天气/热点/人物卡面板（未配置诚实降级，不伪造） |
+| 预取缓存 | 周期 URL 预热注入上下文 | **v0.2 补齐**：可登记 URL、心跳刷新、注入上下文 |
+| 媒体/社交 | 有较长工具面 | **诚实差距（规划中）**：本地媒体处理、社交渠道、Scene Protocol 暂未覆盖 |
 
 黑武士的定位是"参考而非复刻"：借鉴其持续运行架构模式，内核用 Python 重写，
 补上它们没有的认知层。
@@ -93,8 +98,8 @@ cd electron && npm install && npm start
 ### 4) 验证
 
 ```bash
-blackwarrior selftest        # 包级自检（18 项）
-python tests/test_server.py  # HTTP/SSE/UI 端到端 + 前端静态一致性（28 项）
+blackwarrior selftest        # 包级自检（26 项，纯本地不依赖网络与模型）
+python tests/test_server.py  # HTTP/SSE/UI 端到端 + 前端静态一致性（47 项）
 ```
 
 ## UI 一览
@@ -103,6 +108,7 @@ python tests/test_server.py  # HTTP/SSE/UI 端到端 + 前端静态一致性（2
 - **记忆库**：力导向记忆图谱（按保留度着色）、语义检索、一键睡眠巩固；
 - **认知内核**（独有）：情绪曲线、预测误差仪表、好奇心、焦点栈、内核快照 JSON；
 - **活动**：工具注册表（风险着色）、行动日志、实时事件流；
+- **全景**（v0.2）：用户画像卡片、信息面板（天气/热点/人物）、预取缓存登记与管理；
 - **设置**：12 家供应商、人格、心跳、能力开关、语音开关，密钥脱敏回显。
 
 ## 语音
@@ -139,8 +145,9 @@ BlackWarrior/
 
 ## Roadmap
 
-- [ ] v0.2：桌面壳内本地 ASR（whisper.cpp）、微信/钉钉渠道接入
-- [ ] v0.3：技能市场（pasm-skills 生态互通）、多智能体协同
+- [x] **v0.2（已完成）**：补齐与白马 AI 的差距——结构化用户画像、FTS5 中文全文检索、
+      信息面板（天气/热点/人物）、预取缓存；新增「全景」视图与 7 个 REST 端点。
+- [ ] v0.3：桌面壳内本地 ASR（whisper.cpp）、微信/钉钉渠道接入、技能市场（pasm-skills 互通）
 - [ ] v1.0：安装包全平台产物（NSIS / DMG / AppImage）+ 增量更新
 
 ## License

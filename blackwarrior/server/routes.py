@@ -210,6 +210,45 @@ def get_mood_curve(core, body, params, handler):
     return {"curve": core.affect.mood_curve(n=n)}
 
 
+# ============================================================ 语音（★可选能力）
+
+def get_voice_status(core, body, params, handler):
+    """语音能力状态。前端据此决定按钮是可用还是置灰 + 提示原因。"""
+    st = core.voice.status()
+    st["local_asr_note"] = (
+        "浏览器 SpeechRecognition 在 Electron 内不可用（Chromium 不带云端 key），"
+        "黑武士走「录音上传 + 云端转写」，桌面壳内可用。")
+    return st
+
+
+def post_voice_transcribe(core, body, params, handler):
+    """上传一段音频，返回转写文本。请求体是原始音频字节。"""
+    data = handler.read_raw() if hasattr(handler, "read_raw") else b""
+    mime = handler.raw_header("X-Audio-Mime", "audio/webm") \
+        if hasattr(handler, "raw_header") else "audio/webm"
+    try:
+        out = core.voice.transcribe(data, mime=mime)
+    except Exception as ex:
+        code = getattr(ex, "code", "voice_error")
+        # 503 表示"能力未就绪"，前端据此降级而不是反复重试
+        return 503 if code in ("not_configured",) else 502, {
+            "error": str(ex), "code": code}
+    if not out.get("text"):
+        return {"ok": True, "text": "", "empty": True, "note": "未识别到语音内容"}
+    return {"ok": True, **out}
+
+
+def post_voice_speak(core, body, params, handler):
+    """云端合成语音。不可用时返回 ok=False，前端回退到浏览器本地合成。"""
+    text = str((body or {}).get("text") or "").strip()
+    if not text:
+        return 400, {"error": "缺少 text"}
+    audio = core.voice.synthesize(text, str((body or {}).get("voice") or ""))
+    if not audio:
+        return {"ok": False, "reason": "云端合成不可用，请用浏览器本地朗读"}
+    return {"__raw__": audio, "status": 200, "ctype": "audio/mpeg"}
+
+
 # ============================================================ 设置
 
 def get_settings(core, body, params, handler):
@@ -299,6 +338,66 @@ def _query(handler) -> Dict[str, Any]:
     return urllib.parse.parse_qs(parsed.query)
 
 
+# ============================================================ 用户画像 / 面板 / 预取（v0.2）
+
+def get_profile(core, body, params, handler):
+    """已了解的用户画像（带置信度与依据）。"""
+    data = core.profile.get() or {}
+    return {"items": data, "count": len(data)}
+
+
+def post_profile(core, body, params, handler):
+    """设置/纠正某维度画像。"""
+    if not isinstance(body, dict) or not body.get("aspect"):
+        return 400, {"error": "缺少 aspect"}
+    confidence = 0.9
+    try:
+        confidence = float(body.get("confidence", 0.9))
+    except Exception:
+        confidence = 0.9
+    ok = core.profile.set(
+        str(body["aspect"]), str(body.get("value") or ""),
+        evidence=str(body.get("evidence") or ""), confidence=confidence)
+    if not ok:
+        return 400, {"error": "未知画像维度：" + str(body.get("aspect"))}
+    return {"ok": True, "aspect": body["aspect"]}
+
+
+def get_panels(core, body, params, handler):
+    """全部信息面板摘要（天气/热点/人物卡）。"""
+    return core.panels.as_dict()
+
+
+def get_panel(core, body, params, handler):
+    """单个信息面板（/api/panels/{kind}）。"""
+    kind = params.get("kind") or "weather"
+    payload = core.panels.get(kind)
+    payload.pop("ts", None)
+    return payload
+
+
+def get_prefetch(core, body, params, handler):
+    items = core.prefetch.list()
+    return {"items": items, "count": len(items)}
+
+
+def post_prefetch(core, body, params, handler):
+    """登记一条预取 URL（立即抓取一次）。"""
+    if not isinstance(body, dict) or not body.get("url"):
+        return 400, {"error": "缺少 url"}
+    ttl = 3600.0
+    try:
+        ttl = float(body.get("ttl") or 3600.0)
+    except Exception:
+        ttl = 3600.0
+    return {"ok": True, **core.prefetch.add(str(body["url"]), ttl=ttl)}
+
+
+def delete_prefetch(core, body, params, handler):
+    n = core.prefetch.clear()
+    return {"ok": True, "cleared": n}
+
+
 def build_routes() -> Dict[Tuple[str, str], Callable[..., Any]]:
     """构造路由表。"""
     return {
@@ -326,6 +425,10 @@ def build_routes() -> Dict[Tuple[str, str], Callable[..., Any]]:
 
         ("GET", "/api/tools"): get_tools,
 
+        ("GET", "/api/voice/status"): get_voice_status,
+        ("POST", "/api/voice/transcribe"): post_voice_transcribe,
+        ("POST", "/api/voice/speak"): post_voice_speak,
+
         ("GET", "/api/cognition"): get_cognition,
         ("POST", "/api/cognition/consolidate"): post_consolidate,
         ("GET", "/api/cognition/mood"): get_mood_curve,
@@ -343,4 +446,13 @@ def build_routes() -> Dict[Tuple[str, str], Callable[..., Any]]:
         ("POST", "/api/admin/stop"): post_admin_stop,
         ("POST", "/api/admin/reset-memories"): post_admin_reset_memories,
         ("POST", "/api/admin/reset-conversations"): post_admin_reset_conversations,
+
+        # ---- v0.2：用户画像 / 信息面板 / 预取缓存 ----
+        ("GET", "/api/profile"): get_profile,
+        ("POST", "/api/profile"): post_profile,
+        ("GET", "/api/panels"): get_panels,
+        ("GET", "/api/panels/{kind}"): get_panel,
+        ("GET", "/api/prefetch"): get_prefetch,
+        ("POST", "/api/prefetch"): post_prefetch,
+        ("DELETE", "/api/prefetch"): delete_prefetch,
     }

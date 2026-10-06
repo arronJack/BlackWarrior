@@ -19,7 +19,7 @@
 
 from __future__ import annotations
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 TABLES: "list[str]" = [
     # ---- 对话 ----
@@ -141,6 +141,54 @@ TABLES: "list[str]" = [
         value       TEXT NOT NULL DEFAULT '{}',
         updated_at  REAL NOT NULL
     )
+    """,
+
+    # ---- 用户画像（v0.2 新增：让黑武士"更懂你"，对标白马 AI 的 user profile）----
+    """
+    CREATE TABLE IF NOT EXISTS user_profile (
+        aspect      TEXT PRIMARY KEY,             -- name/role/domain/expertise/...
+        value       TEXT NOT NULL DEFAULT '',
+        evidence    TEXT NOT NULL DEFAULT '',     -- 这条画像来自哪句话
+        confidence  REAL NOT NULL DEFAULT 0.5,    -- 0..1，越高越可信
+        updated_at  REAL NOT NULL
+    )
+    """,
+
+    # ---- 预取缓存（v0.2 新增：周期性信息预热，注入上下文）----
+    """
+    CREATE TABLE IF NOT EXISTS prefetch_cache (
+        url         TEXT PRIMARY KEY,
+        content     TEXT NOT NULL DEFAULT '',
+        fetched_at  REAL NOT NULL,
+        ttl         REAL NOT NULL DEFAULT 3600.0   -- 有效秒数
+    )
+    """,
+
+    # ---- 记忆全文索引（v0.2 新增：FTS5 trigram，改善中文子串检索）----
+    # 白马 AI 用 FTS5 trigram 做中文全文；黑武士此前只会 LIKE 字面匹配，
+    # 轻量档（light）下语义检索较弱，trigram 兜底让"聊过的词"都能被搜到。
+    """
+    CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts
+    USING fts5(title, brief, tags, content='memories', content_rowid='id',
+               tokenize='trigram')
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
+        INSERT INTO memories_fts(rowid, title, brief, tags)
+        VALUES (new.id, new.title, new.brief, new.tags);
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
+        DELETE FROM memories_fts WHERE rowid = old.id;
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
+        DELETE FROM memories_fts WHERE rowid = old.id;
+        INSERT INTO memories_fts(rowid, title, brief, tags)
+        VALUES (new.id, new.title, new.brief, new.tags);
+    END
     """,
 ]
 

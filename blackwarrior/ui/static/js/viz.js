@@ -180,6 +180,107 @@
     c.beginPath(); c.arc(cx, cy, 3.5, 0, 6.2832); c.fillStyle = '#e9f2ff'; c.fill();
   }
 
+  // ============================================================ 认知雷达
+  /**
+   * 六维认知雷达。
+   * 这个图只有"真有认知内核"才画得出来——同类项目没有情绪、没有预测误差、
+   * 没有焦点栈，六根轴里有一半是空的。
+   * dims: [{label, value(0..1), color}]
+   */
+  function drawRadar(canvas, dims) {
+    const d = hiDpi(canvas), c = d.ctx, w = d.w, h = d.h;
+    c.clearRect(0, 0, w, h);
+    const cx = w / 2, cy = h / 2 + 2;
+    const R = Math.min(w, h) * 0.36;
+    const n = (dims || []).length;
+    if (!n) { return; }
+
+    // 底网
+    for (let ring = 1; ring <= 4; ring++) {
+      const rr = R * ring / 4;
+      c.beginPath();
+      for (let i = 0; i <= n; i++) {
+        const a = (i / n) * Math.PI * 2 - Math.PI / 2;
+        const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+        if (i === 0) { c.moveTo(x, y); } else { c.lineTo(x, y); }
+      }
+      c.closePath();
+      c.strokeStyle = ring === 4 ? 'rgba(120,180,255,.28)' : 'rgba(120,180,255,.10)';
+      c.lineWidth = 1; c.stroke();
+    }
+    // 轴线 + 标签
+    c.font = '9.5px ui-monospace, monospace';
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 - Math.PI / 2;
+      c.strokeStyle = 'rgba(120,180,255,.12)';
+      c.beginPath();
+      c.moveTo(cx, cy); c.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R);
+      c.stroke();
+      const lx = cx + Math.cos(a) * (R + 15), ly = cy + Math.sin(a) * (R + 15);
+      c.fillStyle = 'rgba(141,158,186,.9)';
+      c.textAlign = Math.abs(Math.cos(a)) < 0.25 ? 'center' : (Math.cos(a) > 0 ? 'left' : 'right');
+      c.textBaseline = 'middle';
+      c.fillText(dims[i].label, lx, ly);
+    }
+
+    // 数据面
+    c.beginPath();
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 - Math.PI / 2;
+      const v = Math.max(0.02, Math.min(1, Number(dims[i].value || 0)));
+      const x = cx + Math.cos(a) * R * v, y = cy + Math.sin(a) * R * v;
+      if (i === 0) { c.moveTo(x, y); } else { c.lineTo(x, y); }
+    }
+    c.closePath();
+    const g = c.createRadialGradient(cx, cy, 0, cx, cy, R);
+    g.addColorStop(0, 'rgba(55,230,255,.42)');
+    g.addColorStop(1, 'rgba(139,92,255,.22)');
+    c.fillStyle = g; c.fill();
+    c.strokeStyle = CY; c.lineWidth = 1.6;
+    c.shadowColor = 'rgba(55,230,255,.55)'; c.shadowBlur = 8;
+    c.stroke(); c.shadowBlur = 0;
+
+    // 顶点
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 - Math.PI / 2;
+      const v = Math.max(0.02, Math.min(1, Number(dims[i].value || 0)));
+      c.beginPath();
+      c.arc(cx + Math.cos(a) * R * v, cy + Math.sin(a) * R * v, 2.6, 0, 6.2832);
+      c.fillStyle = dims[i].color || CY; c.fill();
+    }
+  }
+
+  // ============================================================ 记忆保留环
+  function drawRing(canvas, value, label, sub) {
+    const d = hiDpi(canvas), c = d.ctx, w = d.w, h = d.h;
+    c.clearRect(0, 0, w, h);
+    const cx = w / 2, cy = h / 2;
+    const R = Math.min(w, h) * 0.38;
+    const v = Math.max(0, Math.min(1, Number(value || 0)));
+
+    c.lineWidth = 10; c.lineCap = 'round';
+    c.strokeStyle = 'rgba(120,180,255,.12)';
+    c.beginPath(); c.arc(cx, cy, R, 0, 6.2832); c.stroke();
+
+    const g = c.createLinearGradient(cx - R, cy - R, cx + R, cy + R);
+    g.addColorStop(0, CY); g.addColorStop(1, VI);
+    c.strokeStyle = g;
+    c.shadowColor = 'rgba(55,230,255,.5)'; c.shadowBlur = 10;
+    c.beginPath();
+    c.arc(cx, cy, R, -Math.PI / 2, -Math.PI / 2 + 6.2832 * v);
+    c.stroke(); c.shadowBlur = 0;
+
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillStyle = '#e6eefc';
+    c.font = '600 20px ui-monospace, monospace';
+    c.fillText(label || '', cx, cy - 4);
+    if (sub) {
+      c.fillStyle = 'rgba(109,124,153,.9)';
+      c.font = '10px ui-monospace, monospace';
+      c.fillText(sub, cx, cy + 15);
+    }
+  }
+
   // ============================================================ 记忆图谱（力导向）
   function MemoryGraph(canvas) {
     this.cv = canvas;
@@ -368,7 +469,9 @@
     BeatLine: BeatLine,
     drawMood: drawMood,
     drawGauge: drawGauge,
-    drawRetention: drawRetention
+    drawRetention: drawRetention,
+    drawRadar: drawRadar,
+    drawRing: drawRing
   };
 
 })(window);

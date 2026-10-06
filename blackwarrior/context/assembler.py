@@ -58,6 +58,16 @@ class ContextAssembler:
             blocks.append(mem["text"])
             injected["memory"] = mem["data"]
 
+        # v0.2：用户画像（让回答贴合长期偏好）+ 预取缓存（环境预热）
+        prof = self._profile_block()
+        if prof:
+            blocks.append(prof)
+            injected["profile"] = True
+        pref = self._prefetch_block()
+        if pref:
+            blocks.append(pref)
+            injected["prefetch"] = True
+
         env = self._env_block()
         if env:
             blocks.append(env)
@@ -188,6 +198,20 @@ class ContextAssembler:
         if len(lines) == 1:
             return {"text": "", "data": {"items": []}}
         return {"text": "\n".join(lines), "data": {"items": items, "count": len(items)}}
+
+    def _profile_block(self) -> str:
+        """用户画像块（v0.2）。空画像安静返回，不硬塞。"""
+        try:
+            return self.ctx.profile.to_prompt()
+        except Exception:
+            return ""
+
+    def _prefetch_block(self) -> str:
+        """预取缓存块（v0.2）。环境预热内容注入，降低逐轮重查成本。"""
+        try:
+            return self.ctx.prefetch.to_prompt()
+        except Exception:
+            return ""
 
     def _env_block(self) -> str:
         try:

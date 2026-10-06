@@ -130,6 +130,23 @@ class _Handler(BaseHTTPRequestHandler):
         except Exception:
             return None
 
+    def read_raw(self) -> bytes:
+        """读二进制请求体（语音上传用）。
+
+        ``_read_body`` 会把非 JSON 的 body 当表单解析，音频流进去会被搅坏，
+        所以二进制走独立入口。
+        """
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except Exception:
+            length = 0
+        if length <= 0:
+            return b""
+        return self.rfile.read(length)
+
+    def raw_header(self, name: str, default: str = "") -> str:
+        return str(self.headers.get(name) or default)
+
     def _authorized(self) -> bool:
         """鉴权。本机一律放行；局域网模式下敏感路径要 Token。"""
         if _is_local(self.client_address[0]):
@@ -210,7 +227,11 @@ class _Handler(BaseHTTPRequestHandler):
         fn, params = self._match(method, path)
         if fn is not None:
             try:
-                body = self._read_body() if method in ("POST", "PATCH", "PUT") else None
+                # 语音上传是原始音频流：绝不能先过 _read_body
+                # （它会把二进制当表单解析，音频直接被搅坏）。
+                is_audio = (method == "POST" and path == "/api/voice/transcribe")
+                body = None if is_audio else (
+                    self._read_body() if method in ("POST", "PATCH", "PUT") else None)
                 result = fn(self.core, body, params, self)
             except Exception as ex:
                 self._send(500, {"error": f"{type(ex).__name__}: {ex}"})

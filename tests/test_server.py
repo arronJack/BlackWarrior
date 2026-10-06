@@ -14,6 +14,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+import urllib.error
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,6 +45,13 @@ def post(url: str, payload: dict, timeout: float = 130.0):
     req = urllib.request.Request(
         url, data=data, method="POST",
         headers={"Content-Type": "application/json", "Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.status, json.loads(resp.read().decode("utf-8"))
+
+
+def delete(url: str, timeout: float = 15.0):
+    req = urllib.request.Request(url, method="DELETE",
+                                 headers={"Accept": "application/json"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.status, json.loads(resp.read().decode("utf-8"))
 
@@ -217,6 +225,31 @@ def main() -> int:
         check("认知快照含 tick_scale", "tick_scale" in (cog.get("cognition") or {}))
         st, hist = get(base + "/api/conversations")
         check("会话历史可回看", st == 200 and isinstance(hist.get("items"), list))
+
+        print("== 5b. 语音（降级路径必须明确，不能静默失败）==")
+        st, vs = get(base + "/api/voice/status")
+        check("voice/status", st == 200 and "asr_ready" in vs)
+        check("voice 本地朗读可用标记", vs.get("tts_local_available") is True)
+
+        # 未配置时上传音频必须返回 503 + not_configured，
+        # 让前端据此置灰麦克风；返回 500 或 200 空文本都是错的设计。
+        req = urllib.request.Request(
+            base + "/api/voice/transcribe", data=b"\x00" * 64, method="POST",
+            headers={"Content-Type": "application/octet-stream",
+                     "X-Audio-Mime": "audio/webm"})
+        code = None
+        detail = ""
+        try:
+            urllib.request.urlopen(req, timeout=10)
+        except urllib.error.HTTPError as ex:
+            code = ex.code
+            detail = ex.read().decode("utf-8", "ignore")
+        vs_ready = bool(vs.get("asr_ready"))
+        if vs_ready:
+            check("语音转写（已配置）已接线", True)
+        else:
+            check("未配置时转写返回 503", code == 503, f"got {code}")
+            check("未配置时给出 not_configured", "not_configured" in (detail or ""), detail[:120])
         st, mood = get(base + "/api/cognition/mood?n=20")
         check("情绪曲线", st == 200 and isinstance(mood.get("curve"), list))
 
@@ -225,6 +258,56 @@ def main() -> int:
         check("settings", st == 200)
         blob = json.dumps(cfg)
         check("密钥脱敏", "api_key" not in blob or "***" in blob or "sk-" not in blob)
+
+        print("== 7. 用户画像 / 面板 / 预取（v0.2）==")
+        st, prof = get(base + "/api/profile")
+        check("profile 可读", st == 200 and "items" in prof)
+
+        st, r = post(base + "/api/profile",
+                     {"aspect": "name", "value": "小志", "evidence": "端到端测试"})
+        check("profile 可写", st == 200 and r.get("ok") is True, str(r)[:120])
+        st, prof = get(base + "/api/profile")
+        check("画像已落地",
+              (prof.get("items", {}).get("name", {}) or {}).get("value") == "小志",
+              str(prof)[:160])
+
+        # 非法维度必须 400，而不是静默塞一条脏数据
+        try:
+            post(base + "/api/profile", {"aspect": "不存在的维度", "value": "x"})
+            code = 200
+        except urllib.error.HTTPError as ex:
+            code = ex.code
+        check("非法画像维度被拒", code == 400, f"got {code}")
+
+        st, panels = get(base + "/api/panels")
+        # weather 默认关闭，as_dict 不应返回它；至少 person 面板恒可用
+        check("panels 可读", st == 200 and "person" in panels, str(list(panels))[:120])
+        check("person 面板恒可用",
+              (panels.get("person") or {}).get("available") is True)
+        check("weather 默认关闭（诚实降级）", "weather" not in panels,
+              str(list(panels))[:120])
+        st, one = get(base + "/api/panels/person")
+        check("panels/{kind} 路由参数解析", st == 200 and one.get("kind") == "person",
+              str(one)[:120])
+
+        st, pf = get(base + "/api/prefetch")
+        check("prefetch 可读", st == 200 and "items" in pf)
+        st, r = post(base + "/api/prefetch",
+                     {"url": "https://example.com/bw", "ttl": 600})
+        check("prefetch 可登记", st == 200 and r.get("ok") is True, str(r)[:120])
+        st, pf = get(base + "/api/prefetch")
+        check("预取已落地", pf.get("count", 0) >= 1)
+        st, r = delete(base + "/api/prefetch")
+        check("预取可清空", st == 200 and r.get("ok") is True, str(r)[:120])
+        st, pf = get(base + "/api/prefetch")
+        check("清空后为空", pf.get("count") == 0, str(pf)[:120])
+
+        st, status2 = get(base + "/api/status")
+        check("status 含 panorama", "panorama" in status2)
+        check("panorama 含 profile/panels/prefetch",
+              all(k in (status2.get("panorama") or {})
+                  for k in ("profile", "panels", "prefetch")),
+              str(list((status2.get("panorama") or {})))[:120])
     finally:
         proc.terminate()
         try:

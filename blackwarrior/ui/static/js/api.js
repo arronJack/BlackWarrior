@@ -75,6 +75,15 @@
     events:   (n)         => api.get('/api/events/recent?n=' + (n || 60)),
     bus:      ()          => api.get('/api/bus'),
 
+    // ---- 全景 / 画像（v0.2）
+    profile:  ()          => api.get('/api/profile'),
+    setProfile:(p)        => api.post('/api/profile', p),
+    panels:   ()          => api.get('/api/panels'),
+    panel:    (k)         => api.get('/api/panels/' + encodeURIComponent(k)),
+    prefetch: ()          => api.get('/api/prefetch'),
+    addPrefetch:(u, ttl)  => api.post('/api/prefetch', { url: u, ttl: ttl || 3600 }),
+    clearPrefetch:()      => api.del('/api/prefetch'),
+
     // ---- 设置
     settings: ()          => api.get('/api/settings'),
     save:     (patch)     => api.post('/api/settings', patch),

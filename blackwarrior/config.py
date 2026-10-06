@@ -21,7 +21,7 @@ from typing import Any, Dict, Iterator, List, Mapping, Optional
 
 from . import paths
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 #: 需要脱敏的关键词（小写匹配键名尾部）。
 SECRET_HINTS = ("key", "token", "secret", "password", "passwd", "credential")
@@ -77,14 +77,28 @@ DEFAULTS: Dict[str, Any] = {
     "api_token": "",
 
     # ---- 语音（可选能力，未配置时自动静默关闭）----
+    # 识别走 OpenAI 兼容的 /audio/transcriptions；未配置就整条链路降级，不强制依赖。
     "voice_enabled": False,
     "tts_enabled": False,
     "tts_voice": "",
+    "tts_model": "",          # 留空用服务方默认（tts-1）
     "asr_enabled": False,
+    "asr_provider": "",       # 留空跟随主 provider
+    "asr_model": "whisper-1",
+    "asr_base_url": "",       # 留空跟随主 base_url
+    "asr_language": "zh",
 
     # ---- 搜索 ----
     "web_search_enabled": True,
     "search_provider": "duckduckgo",
+
+    # ---- 用户画像 / 信息面板 / 预取缓存（v0.2）----
+    # 全部默认关闭：黑武士坚持"永不隐藏降级"——能力缺失时明确标注，
+    # 而不是默认偷偷联网。用户想开再开。
+    "weather_enabled": False,
+    "weather_city": "",          # 如 "Beijing" / "上海"（wttr.in 用）
+    "hotspot_enabled": False,    # 热榜需要搜索能力，配置 web_search 后可开
+    "prefetch_enabled": False,   # 周期性 URL 预取注入上下文
 }
 
 #: 环境变量映射：环境变量名 -> 配置键。
@@ -165,6 +179,11 @@ class Config:
             # v0 -> v1：早期没有认知相关配置，补齐即可。
             for k in ("cognition_enabled", "consolidate_every", "recall_k",
                       "auto_observe"):
+                out.setdefault(k, DEFAULTS[k])
+        if version < 2:
+            # v1 -> v2：补齐用户画像 / 信息面板 / 预取缓存配置（默认全关）。
+            for k in ("weather_enabled", "weather_city", "hotspot_enabled",
+                      "prefetch_enabled"):
                 out.setdefault(k, DEFAULTS[k])
         out["schema_version"] = SCHEMA_VERSION
         return out

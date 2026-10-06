@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 
 from . import paths as paths_mod
 from .brain import AffectTracker, CognitiveKernel, MemoryService
+from .voice import build_voice_service
 from .config import Config, load_config
 from .db import Store
 from .events import emit
@@ -71,6 +72,17 @@ class WarriorCore:
         # ---- 模型 ----
         self.gateway = LLMGateway(self.config)
         self.turn_runner = TurnRunner(self, self.gateway)
+
+        # ---- 语音（可选能力，未配置时自动降级）----
+        self.voice = build_voice_service(self.config)
+
+        # ---- v0.2：用户画像 / 信息面板 / 预取缓存 ----
+        from .brain.profile import UserProfile
+        from .runtime.panels import PanelManager
+        from .runtime.prefetch import PrefetchCache
+        self.profile = UserProfile(self.store, self.config, self.gateway)
+        self.panels = PanelManager(self.config, self.store)
+        self.prefetch = PrefetchCache(self.config, self.store)
 
         # ---- 主循环 ----
         self.continuum = Continuum(
@@ -172,6 +184,11 @@ class WarriorCore:
                     emit("consolidated", rep)
                 except Exception:
                     pass
+                # v0.2：心跳顺便刷新到期预取（网络失败保留旧值，不阻断）
+                try:
+                    self._refresh_ambient()
+                except Exception:
+                    pass
 
         # 定期保存认知侧车
         if self._consolidate_counter % 5 == 0:
@@ -180,6 +197,17 @@ class WarriorCore:
             except Exception:
                 pass
         return result
+
+    def _refresh_ambient(self) -> None:
+        """心跳期的"环境预热"：刷新到期预取（网络失败保留旧值）。
+
+        放在 core 层而不是让工具循环去撞网络——心跳节奏由调度器控制，
+        预取失败也不该拖慢任何一轮对话。
+        """
+        try:
+            self.prefetch.refresh_due()
+        except Exception:
+            pass
 
     def _enqueue_due_reminders(self) -> None:
         """把到期的提醒塞进队列。"""
@@ -233,6 +261,19 @@ class WarriorCore:
         except Exception:
             aff = {}
 
+        # v0.2：用户画像 / 信息面板 / 预取缓存 汇总（诚实标注 availability）
+        try:
+            panorama = {
+                "profile": self.profile.as_dict(),
+                "panels": self.panels.as_dict(),
+                "prefetch": {
+                    "count": len(self.prefetch.list()),
+                    "enabled": bool(self.config.get("prefetch_enabled", False)),
+                },
+            }
+        except Exception:
+            panorama = {}
+
         # 心跳缩放系数由情绪世界模型给出，UI 的"心跳节律"面板直接读它。
         # 放在 core 层注入，因为 affect 是 core 的组件、内核本身并不知道它。
         try:
@@ -268,6 +309,7 @@ class WarriorCore:
             "cognition": cog,
             "affect": aff,
             "policy": self.policy.stats(),
+            "panorama": panorama,
         }
 
     def summary(self) -> Dict[str, Any]:

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any, List
 
-from . import filesystem, memory, shell, system, web
+from . import filesystem, memory, profile, shell, system, web
 
 
 def register_builtin(reg: Any, ctx: Any, config: Any = None) -> List[str]:
@@ -33,9 +33,11 @@ def register_builtin(reg: Any, ctx: Any, config: Any = None) -> List[str]:
         web.register(reg, ctx)
     memory.register(reg, ctx)
     system.register(reg, ctx)
+    profile.register(reg, ctx)        # v0.2：画像/面板/预取
 
     names = [n for n in reg.names() if n not in before]
     return names
 
 
-__all__ = ["register_builtin", "filesystem", "shell", "web", "memory", "system"]
+__all__ = ["register_builtin", "filesystem", "shell", "web", "memory",
+           "system", "profile"]

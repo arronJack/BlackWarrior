@@ -199,8 +199,31 @@ class Store:
             (_now(), int(mem_id)))
 
     def search_memories(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
-        """字面检索（语义检索由认知内核负责，这里只做兜底与 UI 搜索）。"""
-        like = f"%{query}%"
+        """检索记忆：优先 FTS5 trigram 中文全文，失败回退 LIKE 字面匹配。
+
+        语义检索仍由认知内核负责；这里解决"轻量档下中文子串也能被搜到"的问题，
+        对标白马 AI 的 FTS5 trigram 中文检索能力。
+
+        注意 trigram 分词器的**固有限制**：只有 ≥3 字符的查询串才能建索引命中，
+        2 字查询（如"散步"）FTS 一定返回空，此时由下面的 LIKE 分支兜住。
+        所以"查不到"不等于"没这条记忆"——两层都空才是真的没有。
+        """
+        q = (query or "").strip()
+        if not q:
+            return []
+        try:
+            rows = self.query(
+                "SELECT m.* FROM memories_fts f JOIN memories m ON m.id=f.rowid"
+                " WHERE memories_fts MATCH ? AND m.archived=0"
+                " ORDER BY rank LIMIT ?",
+                (q, int(limit)))
+            if rows:
+                for r in rows:
+                    r["tags"] = _load(r.get("tags"), [])
+                return rows
+        except Exception:
+            pass
+        like = f"%{q}%"
         rows = self.query(
             "SELECT * FROM memories WHERE archived=0 AND"
             " (title LIKE ? OR brief LIKE ? OR tags LIKE ?)"
@@ -352,6 +375,58 @@ class Store:
         self.execute(
             "INSERT OR REPLACE INTO meta(key, value, updated_at) VALUES(?,?,?)",
             (key, _dump(value), _now()))
+
+    # ------- 用户画像（v0.2）-------------------------------------
+
+    def upsert_profile(self, aspect: str, value: str, *, evidence: str = "",
+                       confidence: float = 0.5) -> None:
+        self.execute(
+            "INSERT INTO user_profile(aspect, value, evidence, confidence, updated_at)"
+            " VALUES(?,?,?,?,?)"
+            " ON CONFLICT(aspect) DO UPDATE SET value=excluded.value,"
+            " evidence=excluded.evidence, confidence=excluded.confidence,"
+            " updated_at=excluded.updated_at",
+            (str(aspect), str(value), str(evidence), float(confidence), _now()))
+
+    def list_profile(self) -> List[Dict[str, Any]]:
+        rows = self.query("SELECT * FROM user_profile ORDER BY confidence DESC")
+        return rows
+
+    def clear_profile(self) -> int:
+        row = self.query_one("SELECT COUNT(*) AS n FROM user_profile")
+        n = int(row["n"]) if row else 0
+        self.execute("DELETE FROM user_profile")
+        return n
+
+    # ------- 预取缓存（v0.2）-------------------------------------
+
+    def add_prefetch(self, url: str, content: str, ttl: float = 3600.0) -> None:
+        self.execute(
+            "INSERT INTO prefetch_cache(url, content, fetched_at, ttl) VALUES(?,?,?,?)"
+            " ON CONFLICT(url) DO UPDATE SET content=excluded.content,"
+            " fetched_at=excluded.fetched_at, ttl=excluded.ttl",
+            (str(url), str(content)[:4000], _now(), float(ttl)))
+
+    def list_prefetch(self) -> List[Dict[str, Any]]:
+        rows = self.query("SELECT * FROM prefetch_cache ORDER BY fetched_at DESC")
+        return rows
+
+    def serve_prefetch(self, now: Optional[float] = None) -> List[Dict[str, Any]]:
+        """返回仍在有效期内的预取内容（供上下文注入）。"""
+        now = float(now if now is not None else _now())
+        rows = self.query(
+            "SELECT url, content, fetched_at, ttl FROM prefetch_cache")
+        out = []
+        for r in rows:
+            if now - float(r.get("fetched_at") or 0) <= float(r.get("ttl") or 0):
+                out.append({"url": r["url"], "content": r["content"]})
+        return out
+
+    def purge_prefetch(self) -> int:
+        row = self.query_one("SELECT COUNT(*) AS n FROM prefetch_cache")
+        n = int(row["n"]) if row else 0
+        self.execute("DELETE FROM prefetch_cache")
+        return n
 
     # ------- 运维 -------------------------------------------------
 
