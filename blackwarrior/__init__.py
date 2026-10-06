@@ -43,8 +43,31 @@ def selftest() -> bool:
         if not cond:
             ok = False
 
+    print("-" * 58)
     print(f"黑武士 {CODENAME} v{__version__} 自检")
     print("-" * 58)
+
+    # 0. 包元数据版本必须与代码一致（漂移过一次，pip show 显示假版本）
+    try:
+        import re as _re
+        from pathlib import Path as _P
+
+        _pkg = _P(__file__).resolve().parents[1] / "pyproject.toml"
+        if _pkg.is_file():
+            _txt = _pkg.read_text(encoding="utf-8")
+            try:
+                import tomllib
+                _pv = str((tomllib.loads(_txt).get("project") or {})
+                          .get("version") or "")
+            except ImportError:
+                # Python 3.9/3.10 没有 tomllib，退回正则（够用：只取 project.version）
+                _m = _re.search(r'^\s*version\s*=\s*"([^"]+)"',
+                                _txt, _re.M)
+                _pv = _m.group(1) if _m else ""
+            check(_pv == __version__,
+                  f"包元数据版本与代码一致（{__version__}）")
+    except Exception as ex:
+        print(f"  ! 无法校验 pyproject 版本：{type(ex).__name__}")
 
     # 1. 路径层
     from . import paths
@@ -137,7 +160,7 @@ def selftest() -> bool:
     z1 = b2.encode("黑武士")
     z2 = b2.encode("黑武士")
     check(len(z1) == 8 and z1 == z2, "象量编码确定且 8 维（纯标准库）")
-    check(b2.encode("黑武士") != b2.encode("白马"), "不同文本产出不同象量")
+    check(b2.encode("黑武士") != b2.encode("PASM"), "不同文本产出不同象量")
     if b2.available:
         d = b2.observe("自检：我叫小志")
         check(bool(d) and d.get("step") == 1, f"V2 感知可用（{b2.reason}）")

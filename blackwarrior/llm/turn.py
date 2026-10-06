@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from threading import Event
 from typing import Any, Dict, List, Optional, Tuple
@@ -143,8 +144,19 @@ class TurnRunner:
         except Exception:
             pass
 
+        # 6.5) 输出前声明校验（pasm2_verify_claims 开启时）
+        # 不改写回答、不阻断回合——只在事件与结果里如实标注，
+        # 让"这句我其实没把握"变成可见信号而不是藏起来的自信。
+        try:
+            verdict = self._verify_claims(result.text or "")
+        except Exception:
+            verdict = {}
+        if verdict:
+            emit("pasm2_verify", {"turn_id": turn_id, **verdict})
+
         emit("turn_end", {"turn_id": turn_id, "rounds": result.rounds,
-                          "chars": len(result.text), "aborted": result.aborted})
+                          "chars": len(result.text), "aborted": result.aborted,
+                          "verify": verdict})
         return result
 
     # ------- 生成循环 ---------------------------------------------
@@ -219,6 +231,49 @@ class TurnRunner:
         if text:
             emit("reply", {"turn_id": turn_id, "text": text})
         return TurnResult(text, tool_calls=all_calls, rounds=rounds, error=error)
+
+    def _verify_claims(self, text: str) -> Dict[str, Any]:
+        """输出前用 V2 逻辑层校验结论性声明（``pasm2_verify_claims`` 开启时）。
+
+        这是**反幻觉的机制保障**：把"我确定"这种断言交给底座的规则集判一次。
+        校验不通过时**不静默改写回答**——只在结果里如实标注，
+        由调用方决定是追加说明还是拒答（默认只标注，保持回答自然）。
+        """
+        ctx = self.ctx
+        try:
+            if not bool(ctx.config.get("pasm2_verify_claims", False)):
+                return {}
+        except Exception:
+            return {}
+        bridge = getattr(ctx, "pasm2", None)
+        if bridge is None or not getattr(bridge, "available", False):
+            return {}
+        claims = _extract_claims(text)
+        if not claims:
+            return {}
+        checked: List[Dict[str, Any]] = []
+        try:
+            facts = ctx.memory.recall(claims[0], k=3)
+        except Exception:
+            facts = []
+        for c in claims[:3]:                 # 一次最多校验 3 条，避免拖慢回合
+            v = bridge.verify_text(c, facts)
+            if not v:
+                continue
+            checked.append({
+                "claim": c[:60],
+                "pass": v.get("pass"),
+                "failed": v.get("failed_layers") or [],
+            })
+        passed = [x for x in checked if x["pass"] is True]
+        failed = [x for x in checked if x["pass"] is False]
+        undetermined = [x for x in checked if x["pass"] is None]
+        return {
+            "checked": checked,
+            "passed": len(passed), "failed": len(failed),
+            # 证据不足（None）也算"没验过"，必须分开报，不能混成"通过"
+            "undetermined": len(undetermined),
+        }
 
     def _execute_tools(self, calls: List[Dict[str, Any]], turn_id: str,
                        abort: Optional[Event]) -> List[Dict[str, Any]]:
@@ -402,3 +457,28 @@ def _safe(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_safe(v) for v in list(value)[:20]]
     return str(value)[:500]
+
+
+#: 结论性断言的最小触发词。宁可漏检也不误报——把闲聊判成"断言"会让校验变噪音。
+_CLAIM_MARKERS = ("我确定", "我保证", "一定", "必然", "肯定", "绝对",
+                  "已经完成", "已通过", "全部完成", "100%")
+
+
+def _extract_claims(text: str, limit: int = 3) -> List[str]:
+    """从回答里挑出值得校验的结论性断言。
+
+    刻意保守：只认带**明确断言词**的句子。没命中的句子不送校验——
+    否则每轮都要跑逻辑层推理，既慢又没意义。
+    """
+    if not text:
+        return []
+    out: List[str] = []
+    for raw in re.split(r"[。！？\n；;]", str(text)):
+        s = raw.strip()
+        if len(s) < 6 or len(s) > 120:
+            continue
+        if any(m in s for m in _CLAIM_MARKERS):
+            out.append(s)
+        if len(out) >= limit:
+            break
+    return out

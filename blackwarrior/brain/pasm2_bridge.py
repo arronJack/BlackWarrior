@@ -34,7 +34,7 @@ V2（``pasm2``，独立包，与 ``pasm/`` 平行不侵入）把这件事从"一
 
 一句话回答"为什么接 PASM"：
 
-    白马 AI 的智能 100% 租自 LLM——断网即哑火，且它不知道自己会错。
+    纯 LLM Agent 的智能 100% 租自模型——断网即哑火，且它不知道自己会错。
     PASM V2 给出的是**本地就成立**的认知器官：能记住、能遗忘、能巩固、
     能预判、能反事实推演、**能意识到自己出错了**（ACC）、能在输出前做
     四层校验（三角），还会在长期运行中**自己改进自己的参数**（成长闭环）。
@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -166,6 +167,10 @@ class Pasm2Bridge:
         self._semantic = False          # 哈希嵌入：诚实标注无语义
         self._data_root = data_root
         self._started_at = time.time()
+        # 主循环调 observe()、HTTP 线程调 status()、工具线程调 verify_tool()
+        # —— 同一桥接层被多线程共用，用一把可重入锁把状态读改写包起来，
+        #    避免 _errors 追加丢失、digest 读到半更新值。
+        self._lock = threading.RLock()
         # 安全层白名单：必须在构造时就给，否则 BoundaryGuard 建成"全拒"
         self._allowlist: List[str] = [str(n) for n in (tool_allowlist or []) if str(n).strip()]
         if self._probe["available"]:
@@ -256,8 +261,9 @@ class Pasm2Bridge:
             d = self._kit.observe(z, rpe=rpe,
                                   interoception=interoception,
                                   anomaly=anomaly)
-            self._step = int(d.get("step") or self._step + 1)
-            self._last_digest = dict(d or {})
+            with self._lock:
+                self._step = int(d.get("step") or self._step + 1)
+                self._last_digest = dict(d or {})
             return dict(d or {})
         except Exception as ex:
             self._note_error("observe", ex)
@@ -334,7 +340,7 @@ class Pasm2Bridge:
 
         这是 V2 给黑武士最实用的一条独立防线：安全层的边界约束、欺骗检测、
         人类优先是**内核级**的，不依赖 LLM 自觉——模型再怎么被提示词绕过，
-        这一关仍在。同类项目只有应用层工具黑名单，理论上可被绕过。
+        这一关仍在。只有应用层工具黑名单的方案，理论上可被绕过。
 
         ⚠ 前置条件：必须先 :meth:`set_tool_allowlist` 喂进真实工具名。
         pasm2 的 ``boundary_tool_allowlist`` **空元组 = 全拒**（保守起点），
@@ -420,8 +426,9 @@ class Pasm2Bridge:
             out = dict(self._kit.night() or {})
             alerts = out.get("imbalance_alerts")
             if alerts:
-                self._alerts = (alerts if isinstance(alerts, list)
-                                else [alerts])[-20:]
+                with self._lock:
+                    self._alerts = (alerts if isinstance(alerts, list)
+                                    else [alerts])[-20:]
             return out
         except Exception as ex:
             self._note_error("night", ex)
@@ -446,7 +453,8 @@ class Pasm2Bridge:
                 "changes": _jsonable(r.get("changes")) or [],
                 "ok": bool(r.get("ok", True)),
             }
-            self._growth = slim
+            with self._lock:
+                self._growth = slim
             return slim
         except Exception as ex:
             self._note_error("growth_review", ex)
@@ -469,6 +477,11 @@ class Pasm2Bridge:
 
     def status(self) -> Dict[str, Any]:
         """心智状态快照（给 /status 与「心智」视图）。"""
+        with self._lock:
+            alerts = list(self._alerts)
+            digest = dict(self._last_digest)
+            verify = dict(self._last_verify)
+            growth = dict(self._growth)
         base: Dict[str, Any] = {
             "available": self.available,
             "reason": self.reason,
@@ -478,7 +491,7 @@ class Pasm2Bridge:
             "api": self._probe.get("api", ""),
             "semantic_embedding": self._semantic,
             "uptime": round(time.time() - self._started_at, 1),
-            "alerts": list(self._alerts),
+            "alerts": alerts,
         }
         if not self.available:
             base["layers"] = self._layers_offline()
@@ -493,9 +506,9 @@ class Pasm2Bridge:
                 "memory_graph_edges": st.get("memory_graph_edges"),
                 "slh_one_to_one_ratio": st.get("slh_one_to_one_ratio"),
                 "safety": st.get("safety") or {},
-                "digest": dict(self._last_digest),
-                "verify": dict(self._last_verify),
-                "growth": dict(self._growth),
+                "digest": digest,
+                "verify": verify,
+                "growth": growth,
             })
         except Exception:
             pass
@@ -510,7 +523,8 @@ class Pasm2Bridge:
 
     def _layers_live(self) -> List[Dict[str, Any]]:
         """V2 可用时：由 digest + 开关状态推十九层活跃度（0..1 或 None）。"""
-        d = self._last_digest or {}
+        with self._lock:
+            d = dict(self._last_digest)
         emo = d.get("emotion") or {}
         pred = d.get("prediction") or {}
         val = emo.get("valence")
@@ -590,9 +604,11 @@ class Pasm2Bridge:
         而不是抛异常。所以这里抛出来 = 集成有 bug；记下来便于排查，
         但绝不让一次调用失败把 V2 永久降级（那会让用户以为"没装 V2"）。
         """
-        self._errors = getattr(self, "_errors", [])
-        self._errors.append({"op": where, "error": f"{type(ex).__name__}: {ex}"})
-        self._errors = self._errors[-20:]
+        with self._lock:
+            self._errors = getattr(self, "_errors", [])
+            self._errors.append({"op": where,
+                                 "error": f"{type(ex).__name__}: {ex}"})
+            self._errors = self._errors[-20:]
 
     def _degrade(self, where: str, ex: Exception) -> None:
         """真正致命的失败（V2 底座本身不可用）才走这里：标注原因并降级。"""

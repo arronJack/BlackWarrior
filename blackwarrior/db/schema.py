@@ -1,6 +1,6 @@
 """数据库表结构。
 
-黑武士用 SQLite 做长期状态持久化（标准库自带，零依赖）。选择它的理由和白马一致：
+黑武士用 SQLite 做长期状态持久化（标准库自带，零依赖）。选它的理由：
 单机桌面应用不需要外部数据库服务，且全文检索、索引、事务都够用。
 
 表清单::
@@ -144,7 +144,7 @@ TABLES: "list[str]" = [
     """,
 
     # ---- 记忆线索（v0.3：联想边，补纯 FTS5 抓不到的语义关系）----
-    # 白马 AI 的"线索模型"。两表结构：clues 存边，audit 存变更账本。
+    # 记忆线索模型。两表结构：clues 存边，audit 存变更账本。
     """
     CREATE TABLE IF NOT EXISTS clues (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -180,7 +180,7 @@ TABLES: "list[str]" = [
     CREATE INDEX IF NOT EXISTS idx_maudit_ts ON memory_audit(ts DESC)
     """,
 
-    # ---- 用户画像（v0.2 新增：让黑武士"更懂你"，对标白马 AI 的 user profile）----
+    # ---- 用户画像（v0.2 新增：让黑武士"更懂你"）----
     """
     CREATE TABLE IF NOT EXISTS user_profile (
         aspect      TEXT PRIMARY KEY,             -- name/role/domain/expertise/...
@@ -202,8 +202,8 @@ TABLES: "list[str]" = [
     """,
 
     # ---- 记忆全文索引（v0.2 新增：FTS5 trigram，改善中文子串检索）----
-    # 白马 AI 用 FTS5 trigram 做中文全文；黑武士此前只会 LIKE 字面匹配，
-    # 轻量档（light）下语义检索较弱，trigram 兜底让"聊过的词"都能被搜到。
+    # FTS5 trigram 做中文全文索引：轻量档（light）下语义检索较弱，
+    # trigram 兜底让"聊过的词"都能被搜到。
     #
     # ⚠ 外部内容表（content='memories'）的删除/更新**必须**用 FTS5 专用的
     # 'delete' 命令形式，不能写普通 DELETE —— 否则触发器会抛

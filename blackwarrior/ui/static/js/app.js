@@ -623,7 +623,7 @@
         });
       }
 
-      // 认知雷达：这六维里有一半是同类项目根本没有的量
+      // 认知雷达：这六维里有一半是纯 LLM 方案根本没有的量
       const rets = S.memories.map(m => Number(m.retention === undefined ? 1 : m.retention));
       const avgRet = rets.length ? (rets.reduce((a, b) => a + b, 0) / rets.length) : 0;
       viz.drawRadar($('cogRadar'), [

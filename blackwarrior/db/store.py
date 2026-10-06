@@ -207,6 +207,9 @@ class Store:
         self.add_memory_audit(mem_id, "delete", field="*",
                               before=str(old.get("title") or "")[:200],
                               source="delete")
+        # 记忆没了，挂在它上面的联想边必须一起走，否则留下永远召不回的孤儿边
+        self.execute("DELETE FROM clues WHERE from_id=? OR to_id=?",
+                     (int(mem_id), int(mem_id)))
         self.execute("DELETE FROM memories WHERE id=?", (int(mem_id),))
         return True
 
@@ -219,7 +222,7 @@ class Store:
         """检索记忆：优先 FTS5 trigram 中文全文，失败回退 LIKE 字面匹配。
 
         语义检索仍由认知内核负责；这里解决"轻量档下中文子串也能被搜到"的问题，
-        对标白马 AI 的 FTS5 trigram 中文检索能力。
+        补上 FTS5 trigram 中文全文检索能力。
 
         注意 trigram 分词器的**固有限制**：只有 ≥3 字符的查询串才能建索引命中，
         2 字查询（如"散步"）FTS 一定返回空，此时由下面的 LIKE 分支兜住。
@@ -257,8 +260,45 @@ class Store:
     def clear_memories(self) -> int:
         row = self.query_one("SELECT COUNT(*) AS n FROM memories")
         n = int(row["n"]) if row else 0
+        self.execute("DELETE FROM clues")          # 记忆清空 → 线索一并清
         self.execute("DELETE FROM memories")
         return n
+
+    # ------- 运维 -------------------------------------------------
+
+    #: 运行数据表（``meta`` 与 ``memories_fts`` 刻意不在内：
+    #: 前者存 schema_version 等应用状态不能被"重置"，后者是虚拟索引，
+    #: 随 memories 的触发器自动同步，手动删会失配）。
+    DATA_TABLES: tuple = ("conversations", "memories", "actions", "reminders",
+                          "tasks", "ui_signals", "clues", "memory_audit",
+                          "user_profile", "prefetch_cache")
+
+    def reset_all(self) -> Dict[str, int]:
+        """清空运行数据（设置页的"重置"按钮）。
+
+        顺序有讲究：先删 ``memories`` 之外的表，再删 ``memories``——
+        这样 memories 的 FTS 删除触发器最后生效，不会有半同步状态。
+        """
+        counts: Dict[str, int] = {}
+        for table in self.DATA_TABLES:
+            try:
+                row = self.query_one(f"SELECT COUNT(*) AS n FROM {table}")
+                counts[table] = int(row["n"]) if row else 0
+                self.execute(f"DELETE FROM {table}")
+            except Exception:
+                # 单表失败不应让"重置"整体失败，但要如实反映
+                counts[table] = -1
+        return counts
+
+    def stats(self) -> Dict[str, int]:
+        out: Dict[str, int] = {}
+        for table in self.DATA_TABLES:
+            try:
+                row = self.query_one(f"SELECT COUNT(*) AS n FROM {table}")
+                out[table] = int(row["n"]) if row else 0
+            except Exception:
+                out[table] = -1
+        return out
 
     # ------- 行动日志 ---------------------------------------------
 
@@ -449,18 +489,39 @@ class Store:
 
     def add_clue(self, from_id: int, to_id: int, kind: str = "related",
                  strength: float = 1.0) -> bool:
-        """建立一条记忆联想边（重复调用为加强，不新增行）。"""
+        """建立一条记忆联想边（重复调用为加强，不新增行）。
+
+        **两端都必须真实存在**——否则会留下永远召不回、也没法解释的孤儿边。
+        以前不校验，导致 `link_clue(9999, 8888)` 也能"成功"，是隐蔽的数据污染。
+        """
+        a, b = int(from_id), int(to_id)
+        if a <= 0 or b <= 0:
+            return False
+        if a == b:
+            return False                      # 自环没有联想意义
+        if not self.get_memory(a) or not self.get_memory(b):
+            return False                      # 端点不存在 → 拒建
         self.execute(
             "INSERT INTO clues(from_id, to_id, kind, strength, ts)"
             " VALUES(?,?,?,?,?)"
             " ON CONFLICT(from_id, to_id, kind) DO UPDATE SET"
             " strength=MIN(2.0, strength + excluded.strength),"
             " ts=excluded.ts",
-            (int(from_id), int(to_id), str(kind or "related"),
-             float(strength), _now()))
-        self.add_memory_audit(int(to_id), "link", field=str(kind),
-                              after=f"clue:{from_id}", source="link_clue")
+            (a, b, str(kind or "related"), float(strength), _now()))
+        self.add_memory_audit(b, "link", field=str(kind),
+                              after=f"clue:{a}", source="link_clue")
         return True
+
+    def prune_clues(self) -> int:
+        """清掉端点已不存在的孤儿边，返回清理条数。
+
+        记忆被删除后线索不会自动级联（没建外键，SQLite 侧也没开 FK 约束到这张表），
+        所以删除记忆时显式调一次。
+        """
+        cur = self.execute(
+            "DELETE FROM clues WHERE from_id NOT IN (SELECT id FROM memories)"
+            " OR to_id NOT IN (SELECT id FROM memories)")
+        return int(cur.rowcount or 0)
 
     def list_clues(self, mem_id: int) -> List[Dict[str, Any]]:
         """列出与某条记忆相连的全部线索（双向）。"""
@@ -492,21 +553,3 @@ class Store:
             (int(limit),))
 
     # ------- 运维 -------------------------------------------------
-
-    def reset_all(self) -> Dict[str, int]:
-        """清空运行数据（设置页的"重置"按钮）。"""
-        counts = {}
-        for table in ("conversations", "memories", "actions", "reminders",
-                      "tasks", "ui_signals"):
-            row = self.query_one(f"SELECT COUNT(*) AS n FROM {table}")
-            counts[table] = int(row["n"]) if row else 0
-            self.execute(f"DELETE FROM {table}")
-        return counts
-
-    def stats(self) -> Dict[str, int]:
-        out = {}
-        for table in ("conversations", "memories", "actions", "reminders",
-                      "tasks", "ui_signals"):
-            row = self.query_one(f"SELECT COUNT(*) AS n FROM {table}")
-            out[table] = int(row["n"]) if row else 0
-        return out

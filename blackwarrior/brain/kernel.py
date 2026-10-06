@@ -2,7 +2,7 @@
 
 这是黑武士与同类型桌面 Agent 最本质的差别。
 
-多数桌面 Agent（包括被参考的同类项目）的"智能"全部来自外部 LLM：
+多数桌面 Agent 的"智能"全部来自外部 LLM：
 它们的自主行为 = 空闲时拿一句提示词去问模型，记忆 = SQLite 检索，
 情绪 = 没有。脑子是**租来的**。
 
@@ -494,7 +494,7 @@ class CognitiveKernel:
     def snapshot(self) -> Dict[str, Any]:
         """认知快照：给 UI 的"大脑实时状态"。
 
-        这是黑武士独有的面板——同类项目没有认知内核，也就无从展示。
+        这是黑武士独有的面板——没有认知内核的 Agent 也就无从展示。
         """
         snap: Dict[str, Any] = {
             "tier": self.tier,
