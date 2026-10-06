@@ -293,8 +293,10 @@ V1 引擎内部再分 `bionic / core / light` 三档（有无 torch 情绪系统
 
 ### 信息面板与预取
 
-- 天气（`wttr.in`，需配 `weather_city`）、人物卡（内置常识 + 从记忆扩充）
-- 热点面板：需搜索能力，未配置时返回"可扩展"占位，**不伪造榜单**
+- 天气（`wttr.in`，需配 `weather_city`，v0.6.7 起中文描述兜底映射）、人物卡（内置常识 + 从记忆扩充）
+- 热点面板（v0.6.7 起接真实榜单）：`60s API` 免 key 数据源，
+  `hotspot_source` 可选 `weibo` / `zhihu` / `bili` / `douyin` / `news`（每日60秒读懂世界）；
+  `hotspot_base` 可换成自部署地址；拉取失败诚实降级，**不伪造榜单**
 - 预取缓存：登记 URL + TTL，心跳刷新到期项，有效期内注入上下文
 
 ### 语音
@@ -580,7 +582,9 @@ blackwarrior --version        # 版本与协议
 | `tasks_enabled` | `true` | 任务续跑（关掉则连工具都不注册） |
 | `sysinfo_enabled` | `true` | 资源感知与诊断工具（软件清单/网络/端口/dev 环境） |
 | `weather_enabled` / `weather_city` | `false` / - | 天气面板 |
-| `hotspot_enabled` | `false` | 热点面板 |
+| `hotspot_enabled` | `false` | 热点面板（真实榜单） |
+| `hotspot_source` | `weibo` | `weibo` / `zhihu` / `bili` / `douyin` / `news` |
+| `hotspot_base` | `https://60s.viki.moe` | 60s API 地址（可换自部署） |
 | `prefetch_enabled` | `false` | 预取心跳刷新 |
 | `host` / `port` | 127.0.0.1 / 3721 | 服务监听 |
 | `allow_lan` / `api_token` | `false` / - | 局域网模式（开就必须设 token） |

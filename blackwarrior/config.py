@@ -97,7 +97,9 @@ DEFAULTS: Dict[str, Any] = {
     # 而不是默认偷偷联网。用户想开再开。
     "weather_enabled": False,
     "weather_city": "",          # 如 "Beijing" / "上海"（wttr.in 用）
-    "hotspot_enabled": False,    # 热榜需要搜索能力，配置 web_search 后可开
+    "hotspot_enabled": False,    # v0.6.7 起接真实榜单源（60s API，免 key）
+    "hotspot_source": "weibo",   # weibo / zhihu / bili / douyin / news
+    "hotspot_base": "https://60s.viki.moe",  # 可换成自部署 60s 地址
     "prefetch_enabled": False,   # 周期性 URL 预取注入上下文
 
     # ---- PASM V2 十九层认知底座（v0.3）----
@@ -216,6 +218,9 @@ class Config:
             # v1 -> v2：补齐用户画像 / 信息面板 / 预取缓存配置（默认全关）。
             for k in ("weather_enabled", "weather_city", "hotspot_enabled",
                       "prefetch_enabled"):
+                out.setdefault(k, DEFAULTS[k])
+            # v0.6.7：热点真实榜单源配置
+            for k in ("hotspot_source", "hotspot_base"):
                 out.setdefault(k, DEFAULTS[k])
         if version < 3:
             # v2 -> v3：补齐 PASM V2 十九层认知底座配置。

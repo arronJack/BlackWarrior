@@ -8,7 +8,7 @@ name = "blackwarrior"
 # 这里必须与它一致——两者脱节过（包元数据停在 0.1.0 而代码已 0.3.0），
 # 导致 `pip show blackwarrior` 显示的版本是假的。
 # selftest 里有守卫（check_package_version），改版本时两边都要改。
-version = "0.6.6"
+version = "0.6.7"
 description = "黑武士 BlackWarrior —— 带真实认知内核的持续运行桌面 AI Agent（PASM 认知引擎 × Electron 桌面壳）"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -17,7 +17,8 @@ authors = [{ name = "arronzheng" }]
 keywords = ["agent", "ai", "pasm", "cognition", "electron", "desktop", "memory"]
 classifiers = [
     "Development Status :: 4 - Beta",
-    "Environment :: Desktop",
+    "Environment :: Console",
+    "Environment :: Win32 (MS Windows)",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
@@ -37,10 +38,8 @@ pasm = [
     "pasm-framework>=0.5.4",
 ]
 # V2 十九层底座（pasm2）的运行条件。
-# ⚠️ pasm2 本体在 PASM 主仓里，而主仓包名 `pasm-agent` 从未发布到 PyPI，
-#    所以这里只声明它的运行依赖，装法见 README：
-#      pip install --no-deps git+https://gitee.com/arronzheng/PASM.git
-#    （--no-deps 用于跳过主仓声明的 torch>=2.0，V2 底座本身不需要 torch）
+# pasm2 已发布 PyPI（2.0.0a12+）：pip install pasm2
+# （旧法备用：pip install --no-deps git+https://gitee.com/arronzheng/PASM.git）
 pasm2 = [
     "numpy>=1.24",
 ]
@@ -57,10 +56,17 @@ Changelog = "https://gitee.com/arronzheng/BlackWarrior/blob/main/CHANGELOG.md"
 blackwarrior = "blackwarrior.cli:main"
 
 [tool.setuptools]
-packages = ["blackwarrior"]
+# 0.6.7 起用下方 packages.find 递归收录全部子包。
+
+[tool.setuptools.packages.find]
+include = ["blackwarrior*"]
 
 [tool.setuptools.package-data]
-blackwarrior = ["ui/static/*"]
+blackwarrior = [
+    "ui/static/*",
+    "ui/static/css/*",
+    "ui/static/js/*",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
