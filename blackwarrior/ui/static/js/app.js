@@ -208,11 +208,22 @@
         // ★ 必须把 error 传进气泡，否则失败时用户只看到「（空回复）」，
         //   而真正的原因（模型不可达 / key 无效 / 超上下文）只出现在
         //   下方活动流里，容易被当成"应用没反应"。
-        if (S.pending) {
-          finishPending(S.pending.text, false, (p && p.error) || '');
+        // ★ 还必须比对 turn_id：用户新消息会中止进行中的自主回合，
+        //   那个回合的 turn_end(aborted, 空文本) 若不比对就会被
+        //   错挂到用户刚发的气泡上 —— 表现为「先一条空回复，
+        //   过一会真回复才到」。
+        if (S.pending && (!p.turn_id || p.turn_id === S.pending.turn_id)) {
+          if (p && p.aborted) {
+            finishPending('（这条回复被新消息中止）', false, '');
+          } else {
+            finishPending(S.pending.text, false, (p && p.error) || '');
+          }
+          setThinking('待机');
+          clearToolPills();
+        } else if (!S.pending) {
+          setThinking('待机');
+          clearToolPills();
         }
-        setThinking('待机');
-        clearToolPills();
         break;
 
       case 'tick_skipped':

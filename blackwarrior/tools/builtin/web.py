@@ -117,9 +117,29 @@ def register(reg: Any, ctx: Any) -> None:
         return {"ok": True, "query": query,
                 "headlines": [r.get("title", "") for r in res.get("results", [])]}
 
+    def open_url(url: str) -> Dict[str, Any]:
+        """用系统默认浏览器打开网址（用户能直接看到浏览器窗口）。"""
+        import webbrowser
+
+        u = str(url or "").strip()
+        if not u:
+            return {"ok": False, "error": "缺少 url 参数"}
+        if not re.match(r"^https?://", u, re.I):
+            u = "https://" + u
+        try:
+            opened = bool(webbrowser.open(u, new=1, autoraise=True))
+        except Exception as ex:
+            return {"ok": False, "url": u, "error": f"{type(ex).__name__}: {ex}"}
+        # webbrowser.open 在无桌面环境可能返回 False——如实上报
+        return {"ok": opened, "url": u,
+                "note": "" if opened else "系统未能启动浏览器（无桌面环境或无默认浏览器）"}
+
     reg.register("web_search", web_search, risk=RISK_SAFE, category="web",
                  description="搜索网页并返回结果标题与链接")
     reg.register("web_read", web_read, risk=RISK_SAFE, category="web",
                  description="读取网页正文（自动去标签）")
     reg.register("web_headlines", web_headlines, risk=RISK_SAFE, category="web",
                  description="只取搜索结果的标题（省 token）")
+    reg.register("open_url", open_url, risk=RISK_SAFE, category="web",
+                 description="用系统默认浏览器打开网址（用户说『帮我打开某网站』时用这个，"
+                             "不要只给链接让用户自己开）")

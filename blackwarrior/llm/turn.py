@@ -251,6 +251,29 @@ class TurnRunner:
                 break
 
         text = "".join(collected).strip()
+        if not text and all_calls and not error:
+            # 工具轮跑完却一个字都没吐（最后一轮只发了 tool_calls 就被
+            # 轮次上限截断）→ 让模型基于工具结果做一次**无工具收口**，
+            # 而不是把空气泡甩给用户。这正是「先空回复、过一会才有下文」
+            # 这类体验缺陷的根源之一。
+            try:
+                messages.append({
+                    "role": "system",
+                    "content": "工具调用轮次已达上限。请基于以上工具结果"
+                               "直接给出最终回答，不要再调用任何工具。",
+                })
+                for ev in self.gateway.stream(messages, tools=None, abort=abort):
+                    if ev.get("type") == "delta":
+                        chunk = ev.get("text") or ""
+                        collected.append(chunk)
+                        emit("reply_delta", {"turn_id": turn_id, "text": chunk})
+                    elif ev.get("type") == "error" and not ev.get("aborted"):
+                        error = error or str(ev.get("error") or "")
+                text = "".join(collected).strip()
+                if text:
+                    emit("reply", {"turn_id": turn_id, "text": text})
+            except Exception as ex:
+                error = error or f"{type(ex).__name__}: {ex}"
         if text:
             emit("reply", {"turn_id": turn_id, "text": text})
         return TurnResult(text, tool_calls=all_calls, rounds=rounds, error=error)
