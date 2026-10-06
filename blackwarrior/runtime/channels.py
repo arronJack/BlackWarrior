@@ -46,17 +46,20 @@ class ChannelBridge:
 
     #: 出站 POST 超时（秒）
     OUTBOUND_TIMEOUT = 5.0
-    #: 单渠道回复文本上限（防止把一篇长文灌进群聊）
-    MAX_OUT_CHARS = 4000
+    #: 单渠道回复文本上限（企业微信等由适配器按字节切段，这里只挡极端长文）
+    MAX_OUT_CHARS = 20000
 
     def __init__(self, core: Any) -> None:
         self._core = core
         self._q = None                 # BUS 订阅队列（start 后有值）
         self._thread: Optional[threading.Thread] = None
+        self._poll_thread: Optional[threading.Thread] = None
+        self._limiters: Dict[str, Any] = {}   # 渠道名 → 限流器（适配器用）
         self._stop = threading.Event()
         self._lock = threading.RLock()
         self._delivered = 0
         self._failed = 0
+        self._pulled = 0
         self._last_error = ""
 
     # ------------------------------------------------------------- 配置
@@ -73,11 +76,19 @@ class ChannelBridge:
             name = str(c.get("name") or "").strip().lower()
             if not _NAME_RE.match(name):
                 continue
+            try:
+                interval = float(c.get("poll_interval") or 10.0)
+            except (TypeError, ValueError):
+                interval = 10.0
             out.append({
                 "name": name,
                 "token": str(c.get("token") or ""),
                 "webhook_url": str(c.get("webhook_url") or "").strip(),
                 "enabled": c.get("enabled", True) is not False,
+                # v0.6.3：出站类型（webhook / wecom_bot）+ 轮询入站
+                "type": str(c.get("type") or "webhook").strip().lower(),
+                "poll_url": str(c.get("poll_url") or "").strip(),
+                "poll_interval": max(3.0, min(interval, 600.0)),
             })
         return out
 
@@ -95,12 +106,14 @@ class ChannelBridge:
             items.append({
                 "name": c["name"],
                 "enabled": c["enabled"],
+                "type": c["type"],
                 "token_masked": _mask(c["token"]),
                 "has_webhook": bool(c["webhook_url"]),
+                "has_poll": bool(c["poll_url"]),
             })
         return {"count": len(items), "items": items,
                 "delivered": self._delivered, "failed": self._failed,
-                "last_error": self._last_error}
+                "pulled": self._pulled, "last_error": self._last_error}
 
     # ------------------------------------------------------------- 入站
 
@@ -130,7 +143,7 @@ class ChannelBridge:
     # ------------------------------------------------------------- 出站
 
     def start(self) -> None:
-        """启动出站转发线程（幂等）。"""
+        """启动出站转发线程 + 轮询入站线程（幂等）。"""
         from ..events import BUS
 
         with self._lock:
@@ -141,6 +154,14 @@ class ChannelBridge:
             self._thread = threading.Thread(
                 target=self._pump, name="bw-channel-bridge", daemon=True)
             self._thread.start()
+        # 有轮询渠道才起拉取线程
+        if any(c["poll_url"] for c in self._channels()):
+            with self._lock:
+                if self._poll_thread is None or not self._poll_thread.is_alive():
+                    self._poll_thread = threading.Thread(
+                        target=self._poll_loop,
+                        name="bw-channel-poll", daemon=True)
+                    self._poll_thread.start()
 
     def stop(self) -> None:
         from ..events import BUS
@@ -176,28 +197,71 @@ class ChannelBridge:
                 continue
             self._deliver(cfg, p)
 
+    def _poll_loop(self) -> None:
+        """轮询入站：定期 GET poll_url，取回 {"items":[{id,text,from_id}]}。
+
+        这是**无需公网回调**的入站方案：任何能自建 HTTP 端点的东西
+        （内网中转、cron 拉邮箱、Server 酱聚合器…）都可以当渠道前级。
+        去重交给 push_background 的 dedupe_key（poll:渠道:id）。
+        """
+        while not self._stop.is_set():
+            try:
+                for cfg in self._channels():
+                    if self._stop.is_set():
+                        return
+                    if not cfg["enabled"] or not cfg["poll_url"]:
+                        continue
+                    self._poll_once(cfg)
+            except Exception:
+                pass
+            # 睡最小间隔（各渠道 interval 不同，逐秒查 due 更省事）
+            for _ in range(10):
+                if self._stop.is_set():
+                    return
+                time.sleep(1.0)
+
+    def _poll_once(self, cfg: Dict[str, Any]) -> None:
+        """拉一次渠道收件端点，把新消息喂进主循环。"""
+        import urllib.request as _ur
+
+        try:
+            with _ur.urlopen(cfg["poll_url"], timeout=8.0) as resp:
+                raw = json.loads(resp.read() or b"{}")
+        except Exception as ex:
+            with self._lock:
+                self._last_error = f"poll {cfg['name']}: {type(ex).__name__}: {ex}"
+            return
+        items = raw.get("items") if isinstance(raw, dict) else raw
+        if not isinstance(items, list):
+            return
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            text = str(it.get("text") or "").strip()
+            if not text:
+                continue
+            mid = str(it.get("id") or "")
+            r = self.inbound(
+                cfg["name"], cfg["token"], text[:8000],
+                from_id=str(it.get("from_id") or "poll"))
+            # 喂成功的计数；被去重拦掉的不算新消息
+            if r.get("ok") and r.get("queued", True):
+                with self._lock:
+                    self._pulled += 1
+
     def _deliver(self, cfg: Dict[str, Any], p: Dict[str, Any]) -> None:
-        """POST 回复到渠道 webhook。独立线程里跑，失败只记录。"""
+        """按渠道类型投递回复。独立线程里跑，失败只记录。"""
+        from . import channel_adapters
+
         text = str(p.get("text") or "")[: self.MAX_OUT_CHARS]
         if not text:
             return
-        payload = json.dumps({
-            "channel": cfg["name"], "text": text,
-            "turn_id": p.get("turn_id", ""),
-        }, ensure_ascii=False).encode("utf-8")
-        req = urllib.request.Request(
-            cfg["webhook_url"], data=payload,
-            headers={"Content-Type": "application/json; charset=utf-8"},
-            method="POST")
-        ok, err = False, ""
-        try:
-            with urllib.request.urlopen(req, timeout=self.OUTBOUND_TIMEOUT) \
-                    as resp:
-                ok = 200 <= int(resp.status or 500) < 300
-                if not ok:
-                    err = f"webhook 返回 {resp.status}"
-        except Exception as ex:
-            err = f"{type(ex).__name__}: {ex}"
+        req_cfg = dict(cfg)
+        req_cfg["_turn_id"] = str(p.get("turn_id") or "")
+        limiters = self._limiters
+        ok, err = channel_adapters.deliver(
+            req_cfg, text, limiters=limiters,
+            timeout=self.OUTBOUND_TIMEOUT)
         with self._lock:
             if ok:
                 self._delivered += 1

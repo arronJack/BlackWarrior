@@ -298,9 +298,11 @@ def selftest() -> bool:
     check(_mlib.to_prompt() == "",
           "媒体库为空时不注入上下文（不占 token）")
 
-    # 10. 渠道桥（v0.6.2）
+    # 10. 渠道桥（v0.6.2）+ 出站适配器（v0.6.3）
     from .runtime.channels import selftest as _ch_self
     check(_ch_self(), "渠道桥（令牌校验/入站闸门/出站 webhook/失败计数）")
+    from .runtime.channel_adapters import selftest as _adp_self
+    check(_adp_self(), "渠道适配器（字节切段/限流/webhook 与企业微信报文）")
 
     print("-" * 58)
     print("自检结果：" + ("通过" if ok else "失败"))
