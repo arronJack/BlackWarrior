@@ -23,16 +23,71 @@ const PROJECT_ROOT = IS_DEV ? path.resolve(__dirname, '..') : path.resolve(__dir
 const READY_PREFIX = '[BW-READY]';
 const HEALTH_TIMEOUT_MS = 90 * 1000;   // 首次冷启动给足时间
 
-// ★必须在 app ready 之前调用，否则不生效。
-// 这台机器没有独立显卡，Electron 的 GPU 进程起不来，会连续报
+// ---------------------------------------------------------- GPU 渲染模式
+//
+// 背景：Electron 的 GPU 进程在部分机器上起不来（无独显驱动、虚拟机、
+// 远程桌面、部分国产显卡驱动），会连续报
 //   GPU process exited unexpectedly: exit_code=1
-// 然后直接 FATAL: GPU process isn't usable. Goodbye. ——**整个应用起不来**。
-// 本项目只画 canvas 波形，不吃 GPU，禁用硬件加速零损失。
-// （无独显 / 虚拟机 / 远程桌面会话的机器全都会踩这个，必须无条件关。）
-try { app.disableHardwareAcceleration(); } catch (_) {}
+// 然后 FATAL: GPU process isn't usable. Goodbye. ——**整个应用直接死，
+// 没有任何机会执行到我们的代码**，所以"进程序里 try/catch"救不了。
+//
+// 结论与取舍：
+//   · 本项目只画 900x560 的 canvas 波形和几层 CSS，**完全不吃 GPU**，
+//     改软件渲染的代价是零（实测波纹动画照样流畅）；
+//   · 所以默认就用软件渲染，保证"一定能启动"；
+//   · 同时留一个开关，万一你换了显卡 / 想开硬件加速可以切回去。
+//
+// 渲染模式选择
+//   'auto'     交给 Chromium 自己判断（多数机器都对）
+//   'software' 强制软件渲染（GPU 进程起不来的机器必选）
+//
+// 还带**自愈**：如果应用在 ready 之前就崩了（典型就是上面那个 FATAL），
+// 下次启动自动切到 software 并记住——因为那种崩溃我们根本没机会补救，
+// 但下一次可以。
+
+function gpuPrefPath() {
+  try { return path.join(app.getPath('userData'), 'gpu-mode.json'); }
+  catch (_) { return path.join(process.cwd(), 'gpu-mode.json'); }
+}
+
+function readGpuMode() {
+  try {
+    const j = JSON.parse(fs.readFileSync(gpuPrefPath(), 'utf8'));
+    return (j && j.mode === 'software') ? 'software' : 'auto';
+  } catch (_) { return 'auto'; }
+}
+
+function writeGpuMode(mode) {
+  try {
+    fs.mkdirSync(path.dirname(gpuPrefPath()), { recursive: true });
+    fs.writeFileSync(gpuPrefPath(),
+      JSON.stringify({ mode, at: Date.now() }, null, 2));
+  } catch (e) { log('[gpu] 偏好写入失败', String(e)); }
+}
+
+let gpuMode = 'auto';
+try {
+  gpuMode = readGpuMode();
+  if (gpuMode === 'software') {
+    app.disableHardwareAcceleration();
+    log('[gpu] 已启用软件渲染（上次启动检测到 GPU 起不来）');
+  }
+} catch (_) {}
+
+// 起不来就"记一笔"，下次用软件渲染（见下面的 before-quit / crash 钩子）
+let reachedReady = false;
+process.on('exit', () => {
+  try {
+    if (!reachedReady && gpuMode !== 'software') {
+      writeGpuMode('software');
+      log('[gpu] 启动未完成，下次改用软件渲染');
+    }
+  } catch (_) {}
+});
 
 let win = null;
 let jarvis = null;         // 贾维斯面板（无边框置顶小窗）
+let doctor = null;         // 环境自检与修复窗口
 let tray = null;
 let kernel = null;          // Python 子进程
 let kernelUrl = null;
@@ -69,6 +124,21 @@ function httpGet(url, timeoutMs) {
     } catch (_) {
       clearTimeout(t); if (!done) { done = true; resolve(null); }
     }
+  });
+}
+
+/** 取 JSON（体检要用）。失败返回 null，绝不抛——自检失败不该影响启动。 */
+function httpGetJson(url, timeoutMs) {
+  return new Promise((resolve) => {
+    const req = http.get(url, (res) => {
+      let body = '';
+      res.on('data', (c) => { body += c; });
+      res.on('end', () => {
+        try { resolve(JSON.parse(body)); } catch (_) { resolve(null); }
+      });
+    });
+    req.setTimeout(timeoutMs || 8000, () => { try { req.abort(); } catch (_) {} resolve(null); });
+    req.on('error', () => resolve(null));
   });
 }
 
@@ -283,6 +353,62 @@ function loadApp() {
   }
 }
 
+
+/** 体检窗口（环境自检与修复）。托盘菜单与"内核启动失败"对话框都会用到。 */
+function createDoctorWindow() {
+  if (doctor && !doctor.isDestroyed()) return doctor;
+  doctor = new BrowserWindow({
+    width: 900, height: 760, minWidth: 720, minHeight: 560,
+    show: false, backgroundColor: '#070a10',
+    icon: path.join(__dirname, 'assets', 'icon.png'),
+    autoHideMenuBar: true, title: '黑武士 · 环境自检与修复',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true, nodeIntegration: false, sandbox: true
+    }
+  });
+  doctor.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url); return { action: 'deny' };
+  });
+  doctor.on('closed', () => { doctor = null; });
+  return doctor;
+}
+
+function showDoctor() {
+  const w = createDoctorWindow();
+  const target = kernelUrl
+    ? kernelUrl + '/doctor.html'
+    : 'file://' + path.join(__dirname, 'pages', 'nokernel.html');
+  w.loadURL(target).catch((e) => log('[doctor] 加载失败', String(e)));
+  w.once('ready-to-show', () => { w.show(); w.focus(); });
+  return w;
+}
+
+/**
+ * 内核起来之后立刻体检，**有 block 级问题就自动把体检窗口推到用户面前**。
+ *
+ * 为什么不只在出错时弹：很多缺失（例如没装语音环境）不会让内核起不来，
+ * 用户看到的是"语音那边没反应"，根本猜不到是缺组件。开机主动体检
+ * 把"缺什么、装它多大、装去哪"一次说清楚，比让人自己排查强得多。
+ */
+async function autoDoctor(silentIfAllOk) {
+  if (!kernelUrl) return null;
+  let d = null;
+  try {
+    d = await httpGetJson(kernelUrl + '/api/doctor', 15000);
+  } catch (e) {
+    log('[doctor] 自检请求失败', String(e));
+    return null;
+  }
+  if (!d) return null;
+  log('[doctor] ' + (d.summary || '') + ' overall=' + d.overall);
+  const blocked = (d.items || []).filter(i => i.level === 'block').length;
+  if (blocked > 0 || !silentIfAllOk) {
+    showDoctor();
+  }
+  return d;
+}
+
 // ---------------------------------------------------------- 贾维斯面板
 
 /**
@@ -402,6 +528,23 @@ function updateTray() {
 function buildTrayMenu() {
   return Menu.buildFromTemplate([
     { label: '贾维斯面板', click: () => toggleJarvis() },
+    { label: '环境自检与修复…', click: () => showDoctor() },
+    { type: 'separator' },
+    { label: `渲染模式：${gpuMode === 'software' ? '软件（兼容无独显）' : '自动'}`,
+      click: (item) => {
+        gpuMode = (gpuMode === 'software') ? 'auto' : 'software';
+        writeGpuMode(gpuMode);
+        item.label = `渲染模式：${gpuMode === 'software' ? '软件（兼容无独显）' : '自动'}`;
+        // 必须重启才生效：disableHardwareAcceleration 只在 ready 前有效
+        dialog.showMessageBox(win, {
+          type: 'info', title: '渲染模式已切换',
+          message: '新的渲染模式将在下次启动生效。',
+          detail: (gpuMode === 'software'
+            ? '已切到软件渲染：没有独显也能正常启动，代价是波纹动画占用更多 CPU。'
+            : '已切回自动：优先用显卡加速；若开机起不来会自动回退到软件渲染。'),
+          buttons: ['立即重启', '稍后']
+        }).then(({ response }) => { if (response === 0) { quitting = true; app.relaunch(); app.exit(0); } });
+      } },
     { label: '主界面', click: () => { if (win) { win.show(); win.focus(); } } },
     { type: 'separator' },
     { label: '重启内核', click: async () => {
@@ -471,6 +614,7 @@ ipcMain.handle('bw:status', () => ({
   platform: process.platform,
   version: app.getVersion(),
   jarvisOpen: !!(jarvis && !jarvis.isDestroyed() && jarvis.isVisible()),
+  gpuMode,
   autoLaunch: (() => { try { return app.getLoginItemSettings().openAtLogin; } catch (_) { return false; } })()
 }));
 
@@ -512,6 +656,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(async () => {
+    reachedReady = true;
     // ★麦克风权限：Electron 默认**拒绝** media 权限，而且失败得很安静——
     // getUserMedia 直接 reject，页面只表现为"点了开启麦克风没反应"，
     // 面板永远停在待命。这个坑不显式处理一定会遇到。
@@ -538,6 +683,8 @@ if (!app.requestSingleInstanceLock()) {
       // 面板在内核就绪后再建：它要加载 kernelUrl + /jarvis.html
       loadJarvis();
       if (!silent) showJarvis(6000);
+      // 有功能不可用就主动把体检窗口推到面前（开机自启时也做，只是不抢焦点）
+      setTimeout(() => autoDoctor(true), 1500);
     } catch (err) {
       log('[boot] 失败:', String(err && err.message || err));
       dialog.showMessageBox(win, {

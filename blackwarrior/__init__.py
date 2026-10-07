@@ -348,8 +348,23 @@ def selftest() -> bool:
     from .tools.builtin import system as _sysmod
     if os.name == "nt":
         _vbs = _sysmod._build_vbs()
-        check("WScript.Shell" in _vbs and "blackwarrior" in _vbs,
-              "开机自启脚本内容正确（隐藏窗口启动 serve）")
+        _kind = str(_sysmod._launch_command().get("kind") or "")
+        # ★断言改了：原来只认 "blackwarrior" 小写，自启指向 Electron 后
+        # 路径里是大写 BlackWarrior，断言就假失败了。
+        # 真正该守的不变量是：**脚本引用的目标要么是桌面壳（有界面），
+        # 要么至少是内核**，而不是绑死某个具体路径。
+        check("WScript.Shell" in _vbs
+              and ("blackwarrior" in _vbs.lower()
+                   or "BlackWarrior" in _vbs),
+              "开机自启脚本内容正确（隐藏窗口启动）")
+        check(_kind in ("electron", "electron-dev", "packaged", "serve-only"),
+              f"自启目标类型可识别（{_kind}）")
+        # 自启优先桌面壳：有 Electron 就绝不能只起内核（那等于"开机没界面"）
+        _el = _sysmod._electron_exe(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        if _el and os.path.basename(_el).lower().startswith("electron"):
+            check("electron" in _vbs.lower(),
+                  "★找到 Electron 时自启确实指向桌面壳（不是只有内核）")
     else:
         print("  ! 非 Windows，跳过开机自启脚本检查")
 
@@ -473,6 +488,26 @@ def selftest() -> bool:
     check(_kind in ("electron", "electron-dev", "packaged", "serve-only"),
           f"自启命令类型可识别（{_kind}）")
     check(bool(_cmd.get("exe")), "自启命令有可执行路径")
+
+    # 20. doctor：体检项齐全 + **不会说谎**（v0.8.8）
+    # 体检说谎比没有体检更糟：明明能识别却报"模型未下载"、ollama 在线却报
+    # "离线"，用户会照着错误结论去折腾。所以这里钉住两个真实判定。
+    from .doctor import Doctor as _Doc
+    from .doctor import _tail as _tail_fn
+
+    _d = _Doc(None).check()
+    _ids = {i["id"] for i in _d["items"]}
+    check({"python", "kernel", "numpy", "pasm2", "llm", "asr_venv",
+           "asr_model", "tts_model", "space", "config"} <= _ids,
+          "★doctor 覆盖 10 项关键依赖")
+    check(all(i["level"] in ("ok", "warn", "block") for i in _d["items"]),
+          "doctor 每项都有合法等级")
+    # 体检项要么 ok，要么必须给出"怎么修"或"怎么手动处理"
+    check(all(i["level"] == "ok" or i.get("fix") or i.get("detail")
+              for i in _d["items"]),
+          "★非正常项都能说出原因")
+    check(_tail_fn("a\nb\nurllib.error.HTTPError: 403 Forbidden\n") != "",
+          "doctor 错误提取能取到真正的最后一行")
 
     print("-" * 58)
     print("自检结果：" + ("通过" if ok else "失败"))

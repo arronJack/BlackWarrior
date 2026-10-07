@@ -19,6 +19,36 @@ def _json(fn):  # noqa: ANN001 - 装饰签名通用的 handler
     return fn
 
 
+
+# ============================================================ 环境自检与修复
+
+def _doctor(core):
+    """取（或懒创建）体检器。挂在 core 上，避免每次请求重建。"""
+    d = getattr(core, "doctor", None)
+    if d is None:
+        from ..doctor import Doctor
+        d = core.doctor = Doctor(core)
+    return d
+
+
+def get_doctor(core, body, params, handler):
+    """逐项体检。**只读**，绝不因为"检查"就改动任何东西。"""
+    return _doctor(core).check()
+
+
+def get_doctor_jobs(core, body, params, handler):
+    """修复任务进度（装大包要几分钟，没有进度用户会以为卡死）。"""
+    return {"jobs": _doctor(core).jobs()}
+
+
+def post_doctor_fix(core, body, params, handler):
+    """**用户点了某一项的「安装」才会走到这里**。绝不自动安装。"""
+    item_id = str((body or {}).get("id") or "")
+    if not item_id:
+        return {"error": "缺少 id"}
+    return _doctor(core).start_fix(item_id)
+
+
 # ============================================================ 贾维斯面板
 
 def _jarvis(core):  # noqa: ANN001 - 运行时就挂在 core 上
@@ -931,6 +961,11 @@ def build_routes() -> Dict[Tuple[str, str], Callable[..., Any]]:
         ("POST", "/api/access/revoke"): post_access_revoke,
 
         # ---- v0.8.0：贾维斯面板（唤醒 / 免提 / 授权确认）----
+        # ---- v0.8.8：环境自检与一键修复 ----
+        ("GET", "/api/doctor"): get_doctor,
+        ("GET", "/api/doctor/jobs"): get_doctor_jobs,
+        ("POST", "/api/doctor/fix"): post_doctor_fix,
+
         ("GET", "/api/jarvis/state"): get_jarvis_state,
         ("GET", "/api/jarvis/audio"): get_jarvis_audio,
         ("POST", "/api/jarvis/transcribe"): post_jarvis_transcribe,
