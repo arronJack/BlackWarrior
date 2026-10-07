@@ -58,7 +58,8 @@ class LLMGateway:
     def _provider(self):
         try:
             return resolve(str(self.config.get("provider", "deepseek") or ""),
-                           str(self.config.get("base_url", "") or ""))
+                           str(self.config.get("base_url", "") or ""),
+                           str(self.config.get("base_url_provider", "") or ""))
         except Exception:
             return resolve("custom")
 
@@ -103,6 +104,20 @@ class LLMGateway:
             "provider": p.key,
             "model": self._model(),
             "base_url": p.base_url,
+            # ★排查"报了 model 错但根因跟模型无关"这类问题时，
+            # 最需要的不是 provider 名，而是**请求最终打到哪个地址**。
+            # 用户/维护者一眼就能看出"配置的是 deepseek，请求却发去了本地
+            # ollama"这种错配（v0.8.9 的真实故障就是它）。
+            "endpoint": (p.base_url + "/chat/completions")
+                         if p.base_url else "",
+            # base_url 归属：非空且与当前 provider 不符时，说明它已失效，
+            # 界面据此提示"你填的地址属于另一个 provider，已忽略"。
+            "base_url_provider": str(
+                self.config.get("base_url_provider", "") or ""),
+            "stale_base_url": bool(
+                str(self.config.get("base_url", "") or "")
+                and str(self.config.get("base_url_provider", "") or "")
+                not in ("", p.key)),
             "missing": missing,
         }
 

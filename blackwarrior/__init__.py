@@ -509,6 +509,37 @@ def selftest() -> bool:
     check(_tail_fn("a\nb\nurllib.error.HTTPError: 403 Forbidden\n") != "",
           "doctor 错误提取能取到真正的最后一行")
 
+    # 21. ★切provider 时旧 base_url 必须失效（v0.8.9）
+    # 用户报「deepseek-chat 报 model 404，换别的模型也报 model 错」——
+    # 根因跟模型名毫无关系：配置里 base_url 还指着本地 ollama
+    # （http://127.0.0.1:11434/v1），而 resolve 一直是"base_url 非空就以它为准"，
+    # 于是 deepseek 的请求被打到本地 ollama，对方当然回404 model not found。
+    # 这里钉住归属机制，防止将来有人"简化"掉它。
+    from .llm.providers import resolve as _rsv
+
+    _p1 = _rsv("deepseek", "http://127.0.0.1:11434/v1", "ollama")
+    check("deepseek" in _p1.base_url,
+          "★base_url 属于别的 provider 时自动失效（修 404 model not found）")
+    _p2 = _rsv("deepseek", "https://my-proxy.example/v1", "deepseek")
+    check(_p2.base_url == "https://my-proxy.example/v1",
+          "★用户自己给当前 provider 配的地址（代理/中转）依然保留")
+    _p3 = _rsv("ollama", "", "")
+    check("11434" in _p3.base_url,
+          "无自定义地址时用 provider 官方预设")
+
+    # 22. 天气面板：多源 + 人话错误（v0.8.9）
+    from .runtime.panels import _net_hint as _nh
+    check("超时" in _nh(Exception("timed out")),
+          "网络异常被翻译成人话（不再甩 URLError 给用户）")
+    # ★断言要查**人话提示**，不能查错误码：人话本来就不该重复 "403"。
+    # 人话里没有 403 说明翻译确实生效了。
+    _h403 = _nh(Exception("<urlopen error 403: Forbidden>"))
+    check("403" not in _h403 and "频率限制" in _h403,
+          f"频率限制被翻译成人话而非抛错误码（{_h403}）")
+    from .runtime import panels as _pn
+    check(len(getattr(_pn, "_WTTR_HOSTS", ())) >= 2,
+          "★天气有主站+镜像双源（单源偶发超时会整个面板失败）")
+
     print("-" * 58)
     print("自检结果：" + ("通过" if ok else "失败"))
     return ok

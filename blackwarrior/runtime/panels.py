@@ -67,6 +67,38 @@ _WTTR_ZH: Dict[str, str] = {
 }
 
 
+#: wttr.in 主站与镜像。主站实测会**偶发慢到超时**（同一时刻镜像正常），
+#: 单源一次失败就整个面板失败，所以主站→镜像各试一次。
+_WTTR_HOSTS = ("wttr.in", "v2.wttr.in")
+
+#: 天气/网络类异常的**人话解释**。原始的
+#: ``URLError: <urlopen error timed out>`` 对用户毫无意义——他要知道的是
+#: "要不要重试"和"是不是我的网络问题"。
+_NET_HINTS = (
+    ("timed out", "连接超时（网络慢或对方暂时不可用）"),
+    ("Connection refused", "对方拒绝连接"),
+    ("Name or service not known", "域名解析失败（DNS 问题）"),
+    ("getaddrinfo", "域名解析失败（DNS 问题）"),
+    ("certificate", "HTTPS 证书校验失败"),
+    ("403", "被对方拒绝访问（通常是频率限制）"),
+    ("404", "城市名没查到"),
+    ("429", "请求太频繁，稍后再试"),
+)
+
+_BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+               " (KHTML, like Gecko) Chrome/125.0 Safari/537.36")
+
+
+def _net_hint(exc: Exception) -> str:
+    """把网络异常翻译成一句用户看得懂的话。"""
+    raw = f"{type(exc).__name__}: {exc}"
+    low = raw.lower()
+    for needle, human in _NET_HINTS:
+        if needle.lower() in low:
+            return human
+    return raw[:120]
+
+
 def _zh_desc(en: str) -> str:
     """英文天气描述 → 中文（精确映射 → 模糊规则 → 原样返回）。"""
     s = str(en or "").strip()
@@ -172,33 +204,50 @@ class PanelManager:
         if not city:
             return {"kind": "weather", "available": False,
                     "note": "未配置 weather_city，无法获取天气"}
-        try:
-            # 城市含中文时必须 URL 编码，否则 http.client 在编码请求行时会
-            # 抛 UnicodeEncodeError（Windows 上尤为常见）——这是天气拉取失败的根因。
-            url = f"https://wttr.in/{quote(city)}?format=j1&lang=zh"
-            req = urllib.request.Request(url, headers={"User-Agent": "BlackWarrior/0.2"})
-            with urllib.request.urlopen(req, timeout=8.0) as resp:
-                import json
-                data = json.loads(resp.read().decode("utf-8", "ignore"))
-            cur = (data.get("current_condition") or [{}])[0]
-            desc = (cur.get("lang_zh") or [{}])
-            txt = desc[0].get("value") if desc else cur.get("weatherDesc", [{}])[0].get("value", "")
-            if not txt:
-                txt = cur.get("weatherDesc", [{}])[0].get("value", "")
-            # wttr.in 的 lang=zh 经常不生效（返回英文），中文映射兜底
-            zh = _zh_desc(txt)
-            temp = cur.get("temp_C", "—")
-            feels = cur.get("FeelsLikeC", "—")
-            area = (data.get("nearest_area") or [{}])[0]
-            name = area.get("areaName", [{}])[0].get("value", city)
-            return {
-                "kind": "weather", "available": True,
-                "city": name, "summary": f"{zh} {temp}°C（体感 {feels}°C）",
-                "temp_c": temp, "feels_c": feels, "desc": zh, "desc_raw": txt,
-            }
-        except Exception as ex:
-            return {"kind": "weather", "available": False,
-                    "error": f"{type(ex).__name__}: {ex}"}
+        # 城市含中文时必须 URL 编码，否则 http.client 在编码请求行时会
+        # 抛 UnicodeEncodeError（Windows 上尤为常见）——这是天气拉取失败的根因。
+        q = quote(city)
+        # ★三处改动，每一处都对应一个真实故障（见提交信息）：
+        #   1. UA 换成浏览器的 —— 自造 UA 被当成爬虫限流（实测 2.2s → 1.1s）
+        #   2. 超时 8s → 15s —— 主站偶发 9 秒以上，一超时整个面板被判死
+        #   3. 主站失败自动切v2.wttr.in 镜像，不再把原始 URLError 甩给用户
+        last = ""
+        for host in _WTTR_HOSTS:
+            try:
+                url = f"https://{host}/{q}?format=j1&lang=zh"
+                req = urllib.request.Request(url, headers={"User-Agent": _BROWSER_UA})
+                with urllib.request.urlopen(req, timeout=15.0) as resp:
+                    import json
+                    data = json.loads(resp.read().decode("utf-8", "ignore"))
+                cur = (data.get("current_condition") or [{}])[0]
+                desc = (cur.get("lang_zh") or [{}])
+                txt = desc[0].get("value") if desc else cur.get("weatherDesc", [{}])[0].get("value", "")
+                if not txt:
+                    txt = cur.get("weatherDesc", [{}])[0].get("value", "")
+                # wttr.in 的 lang=zh 经常不生效（返回英文），中文映射兜底
+                zh = _zh_desc(txt)
+                temp = cur.get("temp_C", "—")
+                feels = cur.get("FeelsLikeC", "—")
+                area = (data.get("nearest_area") or [{}])[0]
+                got = area.get("areaName", [{}])[0].get("value", "") or ""
+                # wttr.in 返回的是拼音/英文（"Foshan"），用户配的是"佛山"。
+                # 显示用户自己写的那个——他认得自己填的名字。
+                same = (got.lower() == city.lower())
+                name = city if (not got or got.isascii()) else got
+                return {
+                    "kind": "weather", "available": True,
+                    "city": name, "city_raw": got,
+                    "summary": f"{zh} {temp}°C（体感 {feels}°C）",
+                    "temp_c": temp, "feels_c": feels, "desc": zh, "desc_raw": txt,
+                    "source": host, "same_city": bool(same),
+                }
+            except Exception as ex:
+                last = _net_hint(ex)
+        # 两个源都不行：给人话 + 可操作的下一步，绝不暴露 URLError 原文
+        return {"kind": "weather", "available": False,
+                "error": f"天气服务暂时不可用：{last}",
+                "city": city,
+                "hint": "可稍后重试；面板会自动恢复，不用重启内核"}
 
     def _fetch_hotspot(self) -> Dict[str, Any]:
         """热点面板：60s API 实时榜单（免 key，可自部署）。

@@ -6,7 +6,7 @@
 
 <div align="center">
 
-![version](https://img.shields.io/badge/version-0.6.0-37e6ff)
+![version](https://img.shields.io/badge/version-0.8.9-37e6ff)
 ![python](https://img.shields.io/badge/python-3.9%2B-8b5cff)
 ![electron](https://img.shields.io/badge/electron-33-9feaf9)
 ![license](https://img.shields.io/badge/license-MIT-3bffa5)
@@ -23,6 +23,7 @@
 ## 目录
 
 - [这是什么](#这是什么)
+- [贾维斯模式：唤醒与授权](#贾维斯模式唤醒与授权)
 - [核心设计：认知进内核，不是提示词](#核心设计认知进内核不是提示词)
 - [功能说明](#功能说明)
 - [安装](#安装)
@@ -49,6 +50,15 @@
 | **有情绪** | 杏仁核显著性 + 四通道神经调质（多巴胺/血清素/去甲肾上腺素/乙酰胆碱） |
 | **会成长** | 失衡告警 → 参数建议 → 灰度应用；evalkit 成长日记 |
 | **桌面同源** | Electron 壳 + 暗黑科技风 UI，托盘常驻、关窗不退出 |
+| **住进电脑** | 文件授权解禁 / MCP 外部工具生态 / 飞书·企微接入 / 开机自启（v0.8.0） |
+| **贾维斯模式** | 喊「黑武士」唤醒、免提对话、**波纹面板**、高危动作人工点确认（v0.8.0+） |
+| **会自检自修** | 10 项环境体检，缺什么列成清单，**点一下**就装（v0.8.8） |
+
+> **当前版本：v0.8.9** · 64 个工具 · 82 个 HTTP 端点 · 语音全本地离线
+
+📄 完整功能清单见 **[docs/FEATURES.md](docs/FEATURES.md)** ·
+安装与排障见 **[docs/INSTALL.md](docs/INSTALL.md)** ·
+v0.7 的 MCP / 飞书配置步骤见 [docs/USAGE-0.7.0.md](docs/USAGE-0.7.0.md)
 
 ---
 

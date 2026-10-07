@@ -44,6 +44,10 @@ DEFAULTS: Dict[str, Any] = {
     "provider": "deepseek",
     "model": "deepseek-chat",
     "base_url": "",
+    # base_url 是为哪个 provider 配的。切换 provider 时旧 base_url 会
+    # 劫持请求（deepseek 的请求打到本地 ollama → 404 model not found），
+    # 带上归属就能让它自动失效。见 llm/providers.resolve()。
+    "base_url_provider": "",
     "api_key": "",
     "temperature": 0.7,
     "max_tokens": 4096,

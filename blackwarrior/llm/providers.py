@@ -110,12 +110,29 @@ def provider_names() -> List[str]:
     return list(PROVIDERS.keys())
 
 
-def resolve(cfg_provider: str, cfg_base_url: str = "") -> Provider:
-    """解析出实际使用的 provider；``base_url`` 非空时以其为准。"""
+def resolve(cfg_provider: str, cfg_base_url: str = "",
+            base_url_provider: str = "") -> Provider:
+    """解析出实际使用的 provider。
+
+    ★``base_url_provider`` 是为修一个真实的坑加的（2026-10-07）：
+    用户把 provider 从 ollama 切到 deepseek 时，**旧的 base_url 还留在
+    配置里**（``http://127.0.0.1:11434/v1``），而 ``resolve`` 一直是
+    "base_url 非空就以它为准"——于是 deepseek 的请求被发到本地 ollama，
+    对方当然回 ``404 model not found``。用户看到的现象是"换了模型还是
+    报 model 错"，根因与模型名毫无关系。
+
+    现在 base_url **带归属**：只在它本来就是为当前 provider 配的时候
+    才生效。切换 provider 后旧地址自动失效，用户自己为新 provider 填的
+    地址（走代理/中转）依然保留。
+    """
     p = get_provider(cfg_provider)
     if cfg_base_url:
-        # 用户手填了 base_url：沿用该 provider 的其它属性，但地址以手填为准
-        return Provider(p.key, p.name, cfg_base_url, p.default_model,
-                        env=p.env, requires_key=p.requires_key,
-                        models=p.models, note=p.note)
+        owner = (base_url_provider or "").strip()
+        if not owner or owner == p.key:
+            # 用户手填了 base_url（或旧配置没记归属，保守沿用）：
+            # 沿用该 provider 的其它属性，但地址以手填为准
+            return Provider(p.key, p.name, cfg_base_url, p.default_model,
+                            env=p.env, requires_key=p.requires_key,
+                            models=p.models, note=p.note)
+        # ★base_url 属于别的 provider ——忽略它，用新 provider 的预设。
     return p

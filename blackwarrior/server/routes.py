@@ -430,7 +430,18 @@ def get_providers(core, body, params, handler):
 
 
 def post_activate(core, body, params, handler):
-    """激活：写入 provider / key / model。"""
+    """激活：写入 provider / key / model。
+
+    ★切provider 时必须处理 base_url（2026-10-07 修的真实故障）：
+    用户从 ollama 切到 deepseek，只改了 provider 和 model，配置里却还留着
+    ``http://127.0.0.1:11434/v1``。而 resolve 一直是"base_url 非空就以它为准"，
+    于是 deepseek 的请求被打到本地 ollama → **404 model not found**。
+    用户看到的现象是"换了模型还是报 model 错"，根因跟模型名毫无关系。
+
+    规则：请求里**带了** base_url 就按用户填的记（并标记它属于哪个 provider）；
+    **没带**就说明用户只想换 provider —— 旧的 base_url 属于别的 provider，
+    必须清掉，否则它会一直劫持。
+    """
     if not isinstance(body, dict):
         return 400, {"error": "需要 JSON 对象"}
     patch = {}
@@ -439,10 +450,25 @@ def post_activate(core, body, params, handler):
             patch[key] = body[key]
     if not patch:
         return 400, {"error": "没有可写入的配置项"}
+
+    cur_provider = str(core.config.get("provider", "") or "")
+    new_provider = str(patch.get("provider") or cur_provider or "")
+
+    if "base_url" in patch:
+        # 用户显式给了地址：记下它属于谁，之后这个 provider 下一直有效
+        patch["base_url_provider"] = new_provider
+    elif new_provider and new_provider != cur_provider:
+        # 换 provider 但没给地址 → 旧地址不属于新 provider，清掉
+        patch["base_url"] = ""
+        patch["base_url_provider"] = ""
+
     core.update_config(patch)
     ping = core.gateway.ping() if core.config.is_activated() else {"ok": False}
     BUS.clear_sticky("activation_required")
-    return {"ok": True, "activated": core.config.is_activated(), "ping": ping}
+    return {"ok": True, "activated": core.config.is_activated(), "ping": ping,
+            "provider": new_provider,
+            "model": core.config.get("model", ""),
+            "endpoint": core.gateway.endpoint()}
 
 
 def post_llm_ping(core, body, params, handler):
