@@ -365,7 +365,8 @@ class WarriorCore:
             out.append({"id": str(c.get("id") or ""), "name": name, "args": args})
         return out
 
-    def summarize(self, command: str, digest: str) -> str:
+    def summarize(self, command: str, digest: str,
+                  only_done: bool = False) -> str:
         """把执行结果说成人话（免提用）。
 
         为什么需要这一步：工具返回的是结构化结果，直接拿去 TTS 会念出
@@ -383,12 +384,21 @@ class WarriorCore:
                          else "") or ""
             except Exception:
                 sys_p = ""
+        # ★only_done=True 时必须显式禁止提及未完成的动作。
+        # 实测踩过：命令是"把文件删了，顺便告诉我几点"，实际只执行了
+        # get_time，模型却汇报成"文件已删除"——它从命令文本里臆断了
+        # 没发生的事。在语音里，用户会以为文件真被删了。
+        guard = ""
+        if only_done:
+            guard = ("\n注意：只有上面列出的结果**真的发生了**。命令里提到的"
+                     "其它动作尚未执行（可能正在等你确认），"
+                     "绝对不要声称它们已完成。")
         msgs = [
             {"role": "system", "content": sys_p or
              "你是黑武士，一个住在这台电脑里的助手。回答要口语、简短。"},
             {"role": "user", "content":
              f"我让你做的是：{command}\n"
-             f"工具执行结果（摘要）：{digest}\n\n"
+             f"已执行工具的结果（摘要）：{digest}{guard}\n\n"
              "请用一句自然的中话告诉我结果，不要复述 JSON，不要罗列字段，"
              "最多 40 字。"},
         ]

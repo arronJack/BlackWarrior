@@ -8,7 +8,7 @@ name = "blackwarrior"
 # 这里必须与它一致——两者脱节过（包元数据停在 0.1.0 而代码已 0.3.0），
 # 导致 `pip show blackwarrior` 显示的版本是假的。
 # selftest 里有守卫（check_package_version），改版本时两边都要改。
-version = "0.8.5"
+version = "0.8.6"
 description = "黑武士 BlackWarrior —— 带真实认知内核的持续运行桌面 AI Agent（PASM 认知引擎 × Electron 桌面壳）"
 readme = "README.md"
 requires-python = ">=3.9"

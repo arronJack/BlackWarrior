@@ -186,24 +186,44 @@ class JarvisRuntime:
         allowed = gated["allowed"]
         pending = gated["pending"]
 
-        # ---- 3a. 有高危动作 → 一律不执行，等人点 ----
+        # ---- 3a. 有高危动作 → 高危的一律不执行，等人点 ----
+        # 低危的**照常执行**：句子里常混着无害动作（"把桌面那个文件删了，
+        # 顺便告诉我几点"），把 get_time 一起扣住等确认会让免提显得很蠢。
         if pending:
             self.stats["blocked"] += 1
             pid = uuid.uuid4().hex[:12]
             reasons = "；".join(sorted({p["reason"] for p in pending}))
+            prelim = ""
+            done_pre: List[str] = []
+            if allowed:
+                try:
+                    pres = self.core.execute_calls(allowed)
+                    done_pre = [str(c.get("name") or "") for c in allowed]
+                    # ★这一段刻意**不交给模型润色**。实测本地 qwen2.5:7b
+                    # 会无视"不要声称未完成动作"的指令，把"把文件删了，顺便
+                    # 告诉我几点"汇报成"文件已删除，现在时间是16:31"——而文件
+                    # 其实还在等确认。语音里用户会以为真删了。
+                    # 凡是"我做完了/没做完"的措辞，只用我们自己从真实结果
+                    # 生成的摘要（`_digest_results`），它只包含确实发生的事。
+                    prelim = self._digest_results(allowed, pres)
+                except Exception:
+                    prelim = ""
             with self._lock:
                 self._pending[pid] = {
                     "command": command, "heard": heard,
                     "calls": pending, "plan": plan, "created": time.time(),
                 }
             reply = _CONFIRM_TMPL.format(reason=reasons)
+            if prelim:
+                reply = f"{prelim}。{reply}" if not prelim.endswith(("。","！","？")) else prelim+reply
             self.set_state(VoiceState.CONFIRM)
             audio = self._speak(reply)
             emit("jarvis_confirm_required",
-                 {"pending_id": pid, "calls": pending, "reason": reasons})
+                 {"pending_id": pid, "calls": pending, "reason": reasons,
+                  "already_done": done_pre})
             return {"kind": "confirm", "pending_id": pid, "pending": pending,
                     "reason": reasons, "reply": reply, "audio": audio,
-                    "asr_text": heard}
+                    "asr_text": heard, "already_executed": done_pre}
 
         # ---- 3b. 全部低危 → 直接执行 ----
         reply = ""
@@ -251,11 +271,11 @@ class JarvisRuntime:
 
     @staticmethod
     def _digest_results(calls: List[Dict[str, Any]], res: Any) -> str:
-        """把工具执行结果压成一句**人类可读**的摘要。
+        """把工具执行结果压成一句**人类可读**的摘要（要被 TTS 念出来）。
 
-        刻意不返回原始 JSON：这些内容是要被 TTS 念出来的。
-        对不认识的结果形状，退回「做了什么 + 返回了多少内容」，
-        宁可平淡也不能念一串 JSON。
+        刻意不返回原始 JSON；而且这条摘要是**唯一被允许**用来汇报
+        "我做了什么"的文本——交给模型润色它会臆断（实测把待确认的
+        删除说成"文件已删除"）。具体模板见模块级 :func:`_one_line`。
         """
         if not isinstance(res, dict):
             return "已经执行完毕。"
@@ -271,30 +291,8 @@ class JarvisRuntime:
             if not isinstance(d, dict):
                 lines.append(str(item)[:120])
                 continue
-            if d.get("error"):
-                lines.append(f"{label} 失败：{str(d['error'])[:100]}")
-                continue
-            rs = d.get("results")
-            if isinstance(rs, list) and rs:
-                titles = []
-                for r in rs[:5]:
-                    if isinstance(r, dict):
-                        t = str(r.get("title") or r.get("name") or "").strip()
-                        if t:
-                            titles.append(t[:40])
-                joined = "；".join(titles)
-                lines.append(f"{label} 找到 {len(rs)} 条结果：{joined}" if titles
-                             else f"{label} 返回 {len(rs)} 条结果。")
-            elif d.get("text"):
-                lines.append(f"{label}：{str(d['text'])[:110]}")
-            elif d.get("ok") is False:
-                lines.append(f"{label} 没有成功。")
-            else:
-                body = json.dumps(d, ensure_ascii=False)
-                lines.append(f"{label} 已执行，返回 {len(body)} 字节内容。")
+            lines.append(_one_line(label, d))
         return " ".join(lines)[:400] if lines else f"{label} 已执行。"
-
-        # -------------------------------------------------- 人工确认
 
     def confirm(self, pending_id: str, ok: bool) -> Dict[str, Any]:
         with self._lock:
@@ -351,3 +349,60 @@ class JarvisRuntime:
         """不走 ASR，直接处理一段文本（打字问它同样能出声）。"""
         return self.handle_text(text if match_wake(text, self.wake_word)["hit"]
                                 else f"{self.wake_word}，{text}")
+
+# ------------------------------------------------------------ 模块级工具
+# 放在文件**末尾**（类体外面）。别再往类体中间插顶层 def——那会让
+# 整个类提前结束、后面的方法变孤儿，而 py_compile 照样通过。
+# 自检里有守卫（WarriorCore / JarvisRuntime 方法齐全）盯这一条。
+
+_WEEKDAY_CN = {
+    "Monday": "星期一", "Tuesday": "星期二", "Wednesday": "星期三",
+    "Thursday": "星期四", "Friday": "星期五",
+    "Saturday": "星期六", "Sunday": "星期日",
+}
+
+
+def _one_line(label: str, d: Dict[str, Any]) -> str:
+    """单个工具结果 → 一句人话（要被 TTS 念出来的）。
+
+    已知返回形状各有模板；不认识就退回「做了什么 + 返回多少内容」，
+    宁可平淡也**绝不念 JSON**。
+    """
+    if d.get("error"):
+        return f"{label} 失败：{str(d['error'])[:100]}"
+    if d.get("ok") is False:
+        return f"{label} 没有成功。"
+
+    # get_time：{ok, timestamp, local, weekday}
+    if isinstance(d.get("local"), str) and d.get("weekday"):
+        wd = _WEEKDAY_CN.get(str(d.get("weekday")), "")
+        return f"现在是 {d['local']} {wd}".strip()
+    # web_search：{ok, results:[{title,url}]}
+    if isinstance(d.get("results"), list):
+        rs = d["results"]
+        if not rs:
+            return f"{label} 没有搜到结果。"
+        titles = []
+        for r in rs[:5]:
+            if isinstance(r, dict):
+                t = str(r.get("title") or r.get("name") or "").strip()
+                if t:
+                    titles.append(t[:36])
+        joined = "；".join(titles)
+        return (f"{label} 找到 {len(rs)} 条：{joined}" if joined
+                else f"{label} 返回 {len(rs)} 条。")
+    # list_tasks / memory_list：{count, items:[]}
+    if isinstance(d.get("items"), list):
+        n = d.get("count")
+        n = n if isinstance(n, int) else len(d["items"])
+        return f"{label}：共 {n} 项。" + ("（当前为空）" if n == 0 else "")
+    if isinstance(d.get("files"), list):
+        return f"{label}：{len(d['files'])} 个文件。"
+    # file_info：{path, type}
+    if d.get("path") and d.get("type"):
+        kind = "目录" if d.get("type") == "dir" else "文件"
+        return f"{label}：{kind} {str(d['path'])[-60:]}"
+    if isinstance(d.get("text"), str) and d["text"].strip():
+        return f"{label}：{d['text'].strip()[:110]}"
+    body = json.dumps(d, ensure_ascii=False)
+    return f"{label} 已执行，返回 {len(body)} 字节内容。"
