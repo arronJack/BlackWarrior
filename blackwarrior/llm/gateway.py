@@ -287,6 +287,10 @@ class LLMGateway:
                 "id": c.get("id") or f"call_{idx}",
                 "name": name,
                 "args": args if isinstance(args, dict) else {"value": args},
+                # 原始参数字符串：工具循环里要把 assistant(tool_calls) 消息
+                # 重新拼回 messages 喂给下一轮，arguments 必须是 JSON 字符串，
+                # 这里直接保留流式拼装出的原文，避免二次序列化失真。
+                "raw": (c.get("arguments") or "").strip(),
             })
         return out
 

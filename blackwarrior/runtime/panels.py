@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import time
 import urllib.request
+from urllib.parse import quote
 from typing import Any, Dict, List, Optional
 
 #: 内置常识人物卡（小体量，覆盖常见追问；用户自定义的可覆盖/扩充）。
@@ -172,7 +173,9 @@ class PanelManager:
             return {"kind": "weather", "available": False,
                     "note": "未配置 weather_city，无法获取天气"}
         try:
-            url = f"https://wttr.in/{city}?format=j1&lang=zh"
+            # 城市含中文时必须 URL 编码，否则 http.client 在编码请求行时会
+            # 抛 UnicodeEncodeError（Windows 上尤为常见）——这是天气拉取失败的根因。
+            url = f"https://wttr.in/{quote(city)}?format=j1&lang=zh"
             req = urllib.request.Request(url, headers={"User-Agent": "BlackWarrior/0.2"})
             with urllib.request.urlopen(req, timeout=8.0) as resp:
                 import json

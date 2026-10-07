@@ -415,6 +415,10 @@ class WarriorCore:
         except Exception:
             cog = {}
         try:
+            memory_stats = self.memory.stats()
+        except Exception:
+            memory_stats = {}
+        try:
             aff = self.affect.snapshot()
         except Exception:
             aff = {}
@@ -439,6 +443,20 @@ class WarriorCore:
             cog["tick_scale"] = round(float(self.affect.suggest_tick_scale()), 3)
         except Exception:
             cog["tick_scale"] = 1.0
+
+        # PASM V2 认知底座可用且启用时，引擎/档位标签统一显示为 pasm2
+        # （V2 的十九层认知才是当前活跃引擎，旧内核写死的 "pasm" 标签会误导用户）。
+        try:
+            p2 = self.pasm2.status() if getattr(self, "pasm2", None) else {}
+            if p2.get("available"):
+                cog["engine"] = "pasm2"
+                memory_stats["engine"] = "pasm2"
+                prof = str(p2.get("profile") or "")
+                if prof:
+                    cog["tier"] = prof
+                    memory_stats["tier"] = prof
+        except Exception:
+            pass
 
         # 补齐 UI 直接消费的两个字段。
         # 放在这里而不是让前端去猜嵌套结构——前端改一次后端改一次，迟早对不上。
@@ -480,7 +498,7 @@ class WarriorCore:
             "db": db_stats,
             "tools": self.tools.stats(),
             "llm": self.gateway.stats(),
-            "memory": self.memory.stats(),
+            "memory": memory_stats,
             "cognition": cog,
             "affect": aff,
             "policy": self.policy.stats(),

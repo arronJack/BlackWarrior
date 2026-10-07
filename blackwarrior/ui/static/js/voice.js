@@ -67,11 +67,14 @@
   /** 返回 { mode, why } —— mode: cloud | browser | none */
   V.pickAsrMode = function () {
     const a = V.available();
-    if (a.cloud && a.cloud.asr_ready && a.recorder && a.mic) {
-      return { mode: 'cloud', why: '云端转写（需联网）' };
-    }
+    // 浏览器识别免配置、即开即用（Chrome/Edge 内置 Web Speech API），优先选用；
+    // 云端通道（录音频→后端 STT）仅在浏览器识别不可用时兜底——DeepSeek 等多数
+    // 供应商没有音频转写接口，盲目走云端会稳定 404，故不再优先。
     if (a.browser_asr) {
       return { mode: 'browser', why: '浏览器识别（Chrome/Edge 内可用，免配置）' };
+    }
+    if (a.cloud && a.cloud.asr_ready && a.recorder && a.mic) {
+      return { mode: 'cloud', why: '云端转写（需联网）' };
     }
     return {
       mode: 'none',

@@ -68,6 +68,24 @@ class _Handler(BaseHTTPRequestHandler):
         """静音默认访问日志（太吵）；错误单独打。"""
         return
 
+    def handle_error(self, e=None) -> None:
+        """覆写基类：浏览器主动关闭 SSE 连接 / 客户端断网是常态，
+        不是产品错误，不应打印那串吓人的 traceback
+        （2026-10-06 用户于 CMS 窗口所见 ConnectionAbortedError 10053）。
+
+        良性断连静默处理；真实异常仍交给基类保留可见性。
+        """
+        import socket
+        benign = (ConnectionAbortedError, ConnectionResetError,
+                  BrokenPipeError, socket.error)
+        if isinstance(e, benign):
+            return
+        # 兼容不同 Python 版本的 handle_error 签名
+        try:
+            BaseHTTPRequestHandler.handle_error(self, e)
+        except TypeError:
+            BaseHTTPRequestHandler.handle_error(self)
+
     # ------- 工具 -------------------------------------------------
 
     def _send(self, status: int, payload: Any = None, *,

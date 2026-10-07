@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import time
 from threading import Event
@@ -238,6 +239,34 @@ class TurnRunner:
 
             if not pending_calls:
                 break
+
+            # ★ 协议修复（2026-10-06 实测空回复 + API 报错根因）：
+            # OpenAI / DeepSeek 要求 role:tool 消息必须紧跟在携带 tool_calls
+            # 的 role:assistant 消息之后。此前只把 tool 结果追加进 messages，
+            # 漏掉了「带 tool_calls 的 assistant 消息」，导致下一轮请求直接被拒：
+            #   Messages with role 'tool' must be a response to a preceding
+            #   message with 'tool_calls'
+            # 模型这一轮因此没有机会收口，表现为「工具转半天 → 空回复」。
+            # 这里把 assistant(tool_calls) 消息重新拼回 messages，
+            # 再追加 tool 结果，严格满足协议顺序。
+            assistant_tool_msg = {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": c.get("id") or f"call_{i}",
+                        "type": "function",
+                        "function": {
+                            "name": c.get("name") or "",
+                            "arguments": (c.get("raw") or "").strip()
+                            or json.dumps(c.get("args") or {},
+                                          ensure_ascii=False),
+                        },
+                    }
+                    for i, c in enumerate(pending_calls)
+                ],
+            }
+            messages.append(assistant_tool_msg)
 
             # 执行工具，把结果喂回模型
             all_calls.extend(pending_calls)

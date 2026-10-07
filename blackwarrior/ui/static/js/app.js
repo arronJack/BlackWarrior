@@ -170,19 +170,20 @@
         break;
 
       case 'prediction':
-        pushFeed('预测误差 ' + fmt.num(p.prediction_error || p.error) +
-                 ' · 好奇心 ' + fmt.num(p.curiosity), 'cog');
+        pushFeed('心智预测｜误差 ' + fmt.num(p.prediction_error || p.error) +
+                 '，好奇心 ' + fmt.num(p.curiosity), 'cog');
         break;
 
       case 'tool_call':
         addToolPill(p.name, 'run');
-        pushFeed('调用工具 ' + p.name, 'tool');
+        pushFeed('调用：' + toolZH(p.name) + toolArgsBrief(p.name, p.args), 'tool');
         break;
 
       case 'tool_result':
         setToolPill(p.name, p.ok === false ? 'err' : 'ok');
-        pushFeed('工具 ' + p.name + ' → ' +
-                 (p.ok === false ? '失败' : '完成') + ' ' + fmt.num((p.duration_ms || 0) / 1000, 2) + 's',
+        pushFeed((p.ok === false ? '✗ ' : '✓ ') + toolZH(p.name) +
+                 (p.ok === false ? ' 失败' : ' 完成') + '（' +
+                 fmt.num((p.duration_ms || 0) / 1000, 2) + ' 秒）',
                  p.ok === false ? 'err' : 'tool');
         break;
 
@@ -248,9 +249,9 @@
 
       case 'pasm2_step':
         // V2 每步感知：把认知信号送进思考流，让"底座在工作"看得见
-        pushFeed('V2 感知 step' + ((p && p.step) || '?') +
-                 '｜实体#' + ((p && p.entity) || 0) +
-                 '｜门控' + (((p && p.gate_passed) === false) ? '拦下' : '放行'),
+        pushFeed('认知底座｜第 ' + ((p && p.step) || '?') + ' 步感知，识别 ' +
+                 ((p && p.entity) || 0) + ' 个实体' +
+                 (((p && p.gate_passed) === false) ? '（被安全层拦下）' : ''),
                  'cog');
         if (S.view === 'mind') { loadMind(); }
         break;
@@ -449,7 +450,7 @@
     Object.keys(S.toolPills).forEach(n => {
       const s = document.createElement('span');
       s.className = 'tpill ' + S.toolPills[n];
-      s.textContent = n;
+      s.textContent = toolZH(n);
       box.appendChild(s);
     });
     // HUD 工具活动
@@ -458,7 +459,7 @@
     Object.keys(S.toolPills).slice(-6).forEach(n => {
       const d = document.createElement('div');
       d.className = 'ta-item ' + (S.toolPills[n] === 'err' ? 'bad' : 'ok');
-      d.innerHTML = '<span>' + fmt.esc(n) + '</span><b>' +
+      d.innerHTML = '<span>' + fmt.esc(toolZH(n)) + '</span><b>' +
         (S.toolPills[n] === 'run' ? '···' : (S.toolPills[n] === 'err' ? 'FAIL' : 'OK')) + '</b>';
       ta.appendChild(d);
     });
@@ -474,18 +475,88 @@
     box.scrollTop = box.scrollHeight;
   }
 
+  // ============================================================ 普通人能懂的日志
+  // 把内部事件类型 / 工具名翻译成大白话，行动日志与实时事件流都用它。
+  const TOOL_ZH = {
+    find_tool: '查找可用工具', system_probe: '探测系统能力', link_clue: '关联线索',
+    list_clues: '列出线索', memory_audit: '审计记忆',
+    media_stats: '统计媒体库', add_media_root: '添加媒体目录', remove_media_root: '移除媒体目录',
+    scan_media: '扫描媒体文件', list_media: '浏览媒体', probe_media: '探测媒体',
+    read_file: '读取文件', write_file: '写入文件', list_dir: '列出目录',
+    file_info: '查看文件信息', delete_file: '删除文件',
+    set_profile: '记录我的信息', get_profile: '读取我的信息', get_panel: '获取信息面板',
+    add_prefetch: '添加预取', list_prefetch: '列出预取',
+    memory_write: '写入记忆', memory_recall: '回忆记忆', memory_consolidate: '巩固记忆',
+    memory_list: '列出记忆', memory_stats: '记忆统计',
+    web_search: '联网搜索', web_read: '阅读网页', web_headlines: '获取新闻头条', open_url: '打开网页',
+    open_app: '打开应用',
+    task_create: '创建任务', list_tasks: '列出任务', task_current: '查看当前任务',
+    task_step_done: '完成一个步骤', task_step_failed: '标记步骤失败', task_complete: '完成任务',
+    task_resume: '恢复任务', task_skip_step: '跳过步骤', task_pause: '暂停任务', task_abandon: '放弃任务',
+    push_background: '转入后台处理',
+    run_command: '运行命令', which: '查找命令',
+    list_software: '列出已装软件', find_command: '查找软件', diagnose_network: '诊断网络'
+  };
+
+  function toolZH(name) {
+    return TOOL_ZH[name] || (name ? String(name).replace(/_/g, ' ') : name);
+  }
+
+  // 从工具参数里挑出最关键的 1~2 个，拼成"人话"尾巴。
+  function toolArgsBrief(name, args) {
+    if (!args || typeof args !== 'object') { return ''; }
+    const pick = ['query', 'keyword', 'text', 'url', 'path', 'app', 'name',
+                  'command', 'topic', 'city', 'target', 'file'];
+    const bits = [];
+    for (const k of pick) {
+      if (args[k] != null && String(args[k]).trim() !== '') {
+        bits.push(String(args[k]).slice(0, 40));
+        if (bits.length >= 2) { break; }
+      }
+    }
+    return bits.length ? '（' + bits.join('，') + '）' : '';
+  }
+
+  // 把每一种事件翻译成一句普通人能看懂的话（实时事件流用）。
+  function evtSummary(type, p) {
+    p = p || {};
+    switch (type) {
+      case 'turn_begin': return '开始处理' + (p.label ? '：' + p.label : '');
+      case 'thinking': return '正在思考：' + (p.text || '').slice(0, 80);
+      case 'prediction': return '心智预测｜误差 ' + fmt.num(p.prediction_error || p.error) +
+                                 '，好奇心 ' + fmt.num(p.curiosity);
+      case 'tool_call': return '▶ 调用：' + toolZH(p.name) + toolArgsBrief(p.name, p.args);
+      case 'tool_result': return (p.ok === false ? '✗ ' : '✓ ') + toolZH(p.name) +
+                                 (p.ok === false ? ' 失败' : ' 完成') + '（' +
+                                 fmt.num((p.duration_ms || 0) / 1000, 2) + ' 秒）';
+      case 'reply': return '已生成回复（' + String(p.text || '').length + ' 字）';
+      case 'reply_delta': return '';  // 流式增量不进事件流，避免刷屏
+      case 'pasm2_step': return '认知底座｜第 ' + ((p && p.step) || '?') + ' 步感知，识别 ' +
+                                  ((p && p.entity) || 0) + ' 个实体，' +
+                                  (((p && p.gate_passed) === false) ? '被安全层拦下' : '通过门控');
+      case 'pasm2_gate': return '安全层｜' + toolZH(p.name) + ' ' +
+                                 ((p && p.allowed) ? '放行' : '拒绝：' + ((p && p.reason) || ''));
+      case 'error': return '⚠ 出错：' + (p.message || p.error || '');
+      case 'consolidated': return '记忆已巩固';
+      case 'tick_skipped': return '自主思考跳过（当前离线）';
+      case 'activation_required': return '需要激活后才能对话';
+      case 'activation_required_cleared': return '已激活，可以对话';
+      case 'cognition': return '认知状态已更新';
+      case 'tools_reloaded': return '工具已重载';
+      default: return type;
+    }
+  }
+
   function pushEvt(type, p) {
     const box = $('evtList');
     if (!box) { return; }
+    const text = evtSummary(type, p);
+    if (!text) { return; }  // 过滤掉纯噪声事件（如 reply_delta）
     const d = document.createElement('div');
     d.className = 'evt-item';
     const t = document.createElement('span'); t.className = 'ty'; t.textContent = type;
     const l = document.createElement('span'); l.className = 'pl';
-    let brief = '';
-    try {
-      brief = JSON.stringify(p).slice(0, 120);
-    } catch (_) { brief = ''; }
-    l.textContent = brief;
+    l.textContent = text;
     d.appendChild(t); d.appendChild(l);
     box.insertBefore(d, box.firstChild);
     while (box.children.length > 80) { box.removeChild(box.lastChild); }
