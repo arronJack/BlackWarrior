@@ -48,6 +48,10 @@ class LLMGateway:
         self.last_status: int = 0
         self.total_calls = 0
         self.total_tokens = 0
+        # v0.7.1：本地模型预热。warmup_ms 是这次预热实际花掉的毫秒数
+        #（本地 7B 冷启动实测 60s+，预热后单次请求 0.3s）。
+        self.warmup_ms = 0
+        self.warmup_at: float = 0.0
 
     # ------- 配置 -------------------------------------------------
 
@@ -145,11 +149,16 @@ class LLMGateway:
                  tools: Optional[List[Dict[str, Any]]] = None,
                  temperature: Optional[float] = None,
                  max_tokens: Optional[int] = None,
-                 abort: Optional[threading.Event] = None) -> Dict[str, Any]:
-        """一次性完成。返回 ``{content, tool_calls, finish_reason, usage}``。"""
+                 abort: Optional[threading.Event] = None,
+                 timeout: Optional[float] = None) -> Dict[str, Any]:
+        """一次性完成。返回 ``{content, tool_calls, finish_reason, usage}``。
+
+        ``timeout`` 覆盖配置里的调用超时——预热这种「明知要等很久」的场景
+        必须能单独放宽，否则冷启动 60s 会被默认的 120s 上限卡住。
+        """
         payload = self._payload(messages, tools=tools, temperature=temperature,
                                 max_tokens=max_tokens, stream=False)
-        raw = self._post(payload, abort=abort)
+        raw = self._post(payload, abort=abort, timeout=timeout)
         self.total_calls += 1
 
         try:
@@ -297,7 +306,8 @@ class LLMGateway:
     # ------- 底层 -------------------------------------------------
 
     def _post(self, payload: Dict[str, Any],
-              abort: Optional[threading.Event] = None) -> Dict[str, Any]:
+              abort: Optional[threading.Event] = None,
+              timeout: Optional[float] = None) -> Dict[str, Any]:
         if abort is not None and abort.is_set():
             raise LLMError("已中止", status=499)
         req = urllib.request.Request(
@@ -307,7 +317,8 @@ class LLMGateway:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=self._timeout()) as resp:
+            with urllib.request.urlopen(
+                    req, timeout=float(timeout or self._timeout())) as resp:
                 raw = resp.read().decode("utf-8", "ignore")
                 self.last_status = int(getattr(resp, "status", 200) or 200)
         except urllib.error.HTTPError as ex:
@@ -349,6 +360,57 @@ class LLMGateway:
 
     # ------- 连通性 -----------------------------------------------
 
+    def _is_local_provider(self) -> bool:
+        """是否本地模型（ollama / lmstudio / llama.cpp…）。"""
+        try:
+            p = str(self.config.get("provider") or "").lower()
+        except Exception:
+            p = ""
+        if p in ("ollama", "local", "lmstudio", "llamacpp", "llama.cpp"):
+            return True
+        base = str(self.config.get("base_url") or "").lower()
+        return any(h in base for h in ("127.0.0.1", "localhost", "0.0.0.0",
+                                       "192.168.", "10.0.", "172.16."))
+
+    def warmup(self, timeout: float = 0.0) -> Dict[str, Any]:
+        """预热本地模型：把「权重加载」这一次性开销提前付掉。
+
+        ★ 为什么必须做：
+          实测本地 ollama + qwen2.5:7b **冷启动第一次请求 67.8 秒**，
+          预热后同样请求 **0.3 秒**。而黑武士一轮工具调用至少要两次生成
+          （先决定调工具、再组织回答），冷启动叠加后必然撞上 ``timeout``
+          上限——用户看到的就是"第一条消息总是超时/特别慢，之后就好了"。
+
+        代价是一次极短请求（max_tokens=1），换来首轮延迟从 ~68s 降到亚秒级。
+        云端 provider 不需要预热（没有权重加载），直接跳过不浪费额度。
+        """
+        started = time.time()
+        if not self._is_local_provider():
+            self.warmup_ms = 0
+            self.warmup_at = time.time()
+            return {"ok": True, "skipped": True,
+                    "reason": "云端模型无需预热（无权重加载开销）"}
+        if not self.ready():
+            return {"ok": False, "skipped": True, "reason": "模型未就绪",
+                    **self.readiness()}
+        # 超时给足：冷启动本身就要一分钟以上，不能用默认的 15s ping 上限
+        budget = float(timeout or 0) or max(180.0, self._timeout() + 60.0)
+        try:
+            res = self.complete([{"role": "user", "content": "1"}],
+                                max_tokens=1, temperature=0.0,
+                                timeout=budget)
+            self.warmup_ms = int((time.time() - started) * 1000)
+            self.warmup_at = time.time()
+            return {"ok": True, "skipped": False,
+                    "cost_ms": self.warmup_ms,
+                    "reply": str(res.get("content", ""))[:10]}
+        except Exception as ex:
+            # 预热失败**绝不影响启动**：本地模型可能压根没起来，
+            # 那是"模型不可用"，由 readiness 如实汇报，不是启动失败。
+            self.warmup_ms = 0
+            self.warmup_at = time.time()
+            return {"ok": False, "error": f"{type(ex).__name__}: {ex}"}
+
     def ping(self, timeout: float = 15.0) -> Dict[str, Any]:
         """用一条极短消息探测连通性（设置页"测试连接"用）。"""
         if not self.ready():
@@ -361,7 +423,8 @@ class LLMGateway:
                 max_tokens=16, temperature=0.0,
             )
             return {"ok": True, "latency_ms": int((time.time() - started) * 1000),
-                    "reply": res.get("content", "")[:50], **self.readiness()}
+                    "reply": res.get("content", "")[:50],
+                    "warmup_ms": self.warmup_ms, **self.readiness()}
         except LLMError as ex:
             return {"ok": False, "error": str(ex), "status": ex.status,
                     "rate_limited": ex.rate_limited, **self.readiness()}
@@ -375,5 +438,6 @@ class LLMGateway:
             "tokens": self.total_tokens,
             "last_error": self.last_error,
             "last_status": self.last_status,
+            "warmup_ms": self.warmup_ms,
             **self.readiness(),
         }

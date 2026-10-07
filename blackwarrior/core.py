@@ -212,6 +212,30 @@ class WarriorCore:
             self.mcp.start(reg=self.tools, background=True)
         except Exception:
             pass
+        # 本地模型预热（v0.7.1）：冷启动实测 60s+，不预热的话第一条消息
+        # 必然超时。放后台线程——预热期间服务照常可用，只是首轮回答稍慢。
+        try:
+            import threading as _th
+
+            _th.Thread(target=self._warmup_model, name="bw-llm-warmup",
+                       daemon=True).start()
+        except Exception:
+            pass
+
+    def _warmup_model(self) -> None:
+        """预热本地模型并把耗时如实记录（失败只记事件，不阻断启动）。"""
+        try:
+            rep = self.gateway.warmup()
+        except Exception as ex:
+            return
+        try:
+            emit("llm_warmup", rep)
+            if rep.get("ok") and not rep.get("skipped"):
+                emit("notice", {
+                    "message": (f"本地模型已预热（{rep.get('cost_ms', 0) // 1000}s），"
+                                "之后对话不会再卡在冷启动上")})
+        except Exception:
+            pass
         # 恢复上次遗留的任务（转 paused，不自动继续）
         rec = self.recover_tasks()
         if rec.get("recovered"):
@@ -340,10 +364,31 @@ class WarriorCore:
 
         注意：正常交互走 :meth:`send`（异步、可打断）。
         这里直接跑一个回合，不经过主循环队列。
-        """
-        from threading import Event
 
-        return self.turn_runner.run(text, "sync ask", None, Event())
+        ★ ``timeout`` 以前是**收下不用**的死参数——调用方（HTTP /api/ask）
+        传什么都没区别，超时由网关配置说了算。本地模型冷启动实测 68s，
+        调用方想给 300s 也没用，只能看着 TimeoutError。现在真正生效：
+        到点自动中止，并如实说明是被超时掐断的。
+        """
+        from threading import Event, Timer
+
+        budget = float(timeout or 0) or 0.0
+        abort = Event()
+        timer = None
+        if budget > 0:
+            timer = Timer(budget, abort.set)
+            timer.daemon = True
+            timer.start()
+        try:
+            result = self.turn_runner.run(text, "sync ask", None, abort)
+        finally:
+            if timer is not None:
+                timer.cancel()
+        if abort.is_set() and not (result.aborted or result.text):
+            result.error = (f"已超过 {budget:.0f}s 未完成，已中止"
+                            "（本地模型偏慢时可调大 timeout，"
+                            "或改用云端模型）")
+        return result
 
     # ------- 主循环回调 -------------------------------------------
 
