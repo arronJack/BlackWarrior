@@ -23,6 +23,14 @@ const PROJECT_ROOT = IS_DEV ? path.resolve(__dirname, '..') : path.resolve(__dir
 const READY_PREFIX = '[BW-READY]';
 const HEALTH_TIMEOUT_MS = 90 * 1000;   // 首次冷启动给足时间
 
+// ★必须在 app ready 之前调用，否则不生效。
+// 这台机器没有独立显卡，Electron 的 GPU 进程起不来，会连续报
+//   GPU process exited unexpectedly: exit_code=1
+// 然后直接 FATAL: GPU process isn't usable. Goodbye. ——**整个应用起不来**。
+// 本项目只画 canvas 波形，不吃 GPU，禁用硬件加速零损失。
+// （无独显 / 虚拟机 / 远程桌面会话的机器全都会踩这个，必须无条件关。）
+try { app.disableHardwareAcceleration(); } catch (_) {}
+
 let win = null;
 let jarvis = null;         // 贾维斯面板（无边框置顶小窗）
 let tray = null;
@@ -79,9 +87,15 @@ function killKernel() {
 // ---------------------------------------------------------- Python 内核定位
 
 /**
- * 依次尝试：环境变量 → 打包内置运行时 → PATH 上的 python。
+ * 依次尝试：环境变量 → 打包内置运行时 → Windows 常见安装位置 → PATH。
  * 每个候选用「能否 import blackwarrior」验证，验不过直接跳过——
  * 否则用户机器上装了一堆 Python 却找不到可用解释器时表现会非常诡异。
+ *
+ * ★为什么要加"Windows 常见安装位置"：打包产物里目前**没有**内置
+ * Python（那要额外打 ~500MB），所以安装后的 exe 完全依赖用户机器上
+ * 已经装好的 Python。只探 PATH 是不够的——很多人（包括本机）装的
+ * Python 在 C:\Python312 这种非默认位置，PATH 里根本没有。
+ * 找不到时宁可明确报错，也别让用户对着"内核启动失败"猜。
  */
 async function resolvePython() {
   const candidates = [];
@@ -89,6 +103,10 @@ async function resolvePython() {
   if (app.isPackaged) {
     const bundled = path.join(process.resourcesPath, 'python', process.platform === 'win32' ? 'python.exe' : 'bin/python3');
     if (fs.existsSync(bundled)) candidates.push(bundled);
+  } else {
+    // 开发态：先试本机已知的可用解释器，避免装了一堆环境却挑错
+    candidates.push('C:/Python312/python.exe', 'C:/Python311/python.exe',
+                    'C:/Python313/python.exe');
   }
   candidates.push(process.platform === 'win32' ? 'python' : 'python3', 'python');
 
@@ -145,8 +163,12 @@ async function startKernel() {
   const py = await resolvePython();
   if (!py) {
     throw new Error(
-      '未找到可用的 Python（需要 3.10+ 且已安装 blackwarrior 包）。\n' +
-      '可设置环境变量 BLACKWARRIOR_PYTHON 指向解释器路径。');
+      '未找到可用的 Python（需要 3.10+ 且已安装 blackwarrior 包）。\n\n'
+      + '本安装包**没有内置 Python**（内置会带来约 500MB 体积），\n'
+      + '所以需要你机器上已装好 Python。可任选一种方式解决：\n'
+      + '  1) 设置环境变量 BLACKWARRIOR_PYTHON 指向解释器完整路径，\n'
+      + '     例如 C:\\Python312\\python.exe（装在非默认位置时最省事）\n'
+      + '  2) 确认该解释器能 import blackwarrior（pip install 本项目）');
   }
 
   const spec = pythonArgs();
