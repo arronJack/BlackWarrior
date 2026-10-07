@@ -302,7 +302,7 @@ class WarriorCore:
             res = self.gateway.complete(msgs, tools=tools, temperature=0.3)
         except Exception as ex:
             return {"text": "", "calls": [], "error": str(ex)}
-        calls = _normalize_tool_calls(res.get("tool_calls"))
+        calls = self._normalize_tool_calls(res.get("tool_calls"))
         text_out = str(res.get("content") or "")
 
         # ★空回复兜底：本地小模型（qwen2.5:7b 实测）带工具时有一定概率

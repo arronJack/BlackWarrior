@@ -57,7 +57,11 @@ def get_jarvis_audio(core, body, params, handler):
     import os
     from urllib.parse import unquote
 
-    p = unquote(str((params or {}).get("p") or ""))
+    # ★查询参数必须走 _query(handler)：路由传进来的 `params` 是**路径**
+    # 变量（例如 /memories/{id}），不是 query string。按 params 取会永远
+    # 拿到空 → 面板永远播不出声音（而 TTS 那边其实已经合成好了）。
+    q = _query(handler) if handler is not None else {}
+    p = unquote(str((q.get("p") or [""])[0]))
     if not p:
         return {"error": "缺少 p 参数"}
     from .. import paths as _paths
