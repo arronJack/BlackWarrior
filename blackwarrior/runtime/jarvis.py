@@ -213,7 +213,7 @@ class JarvisRuntime:
             try:
                 res = self.core.execute_calls(allowed)
                 done = [str(c.get("name") or "") for c in allowed]
-                digest = _digest_results(allowed, res)
+                digest = self._digest_results(allowed, res)
                 reply = ""
             except Exception as ex:
                 reply = f"执行的时候出错了：{ex}"
@@ -249,51 +249,52 @@ class JarvisRuntime:
         return text if len(text) <= 120 else text[:118] + "…"
 
 
-def _digest_results(calls: List[Dict[str, Any]], res: Any) -> str:
-    """把工具执行结果压成一句**人类可读**的摘要。
+    @staticmethod
+    def _digest_results(calls: List[Dict[str, Any]], res: Any) -> str:
+        """把工具执行结果压成一句**人类可读**的摘要。
 
-    刻意不返回原始 JSON：这些内容是要被 TTS 念出来的。
-    对不认识的结果形状，退回「做了什么 + 返回了多少内容」，
-    宁可平淡也不能念一串 JSON。
-    """
-    if not isinstance(res, dict):
-        return "已经执行完毕。"
-    results = res.get("results") or []
-    names = [str(c.get("name") or "") for c in (calls or [])]
-    label = "、".join(names) if names else "工具"
-    lines: List[str] = []
-    for item in results:
-        try:
-            d = json.loads(item) if isinstance(item, str) else item
-        except Exception:
-            d = None
-        if not isinstance(d, dict):
-            lines.append(str(item)[:120])
-            continue
-        if d.get("error"):
-            lines.append(f"{label} 失败：{str(d['error'])[:100]}")
-            continue
-        rs = d.get("results")
-        if isinstance(rs, list) and rs:
-            titles = []
-            for r in rs[:5]:
-                if isinstance(r, dict):
-                    t = str(r.get("title") or r.get("name") or "").strip()
-                    if t:
-                        titles.append(t[:40])
-            joined = "；".join(titles)
-            lines.append(f"{label} 找到 {len(rs)} 条结果：{joined}" if titles
-                         else f"{label} 返回 {len(rs)} 条结果。")
-        elif d.get("text"):
-            lines.append(f"{label}：{str(d['text'])[:110]}")
-        elif d.get("ok") is False:
-            lines.append(f"{label} 没有成功。")
-        else:
-            body = json.dumps(d, ensure_ascii=False)
-            lines.append(f"{label} 已执行，返回 {len(body)} 字节内容。")
-    return " ".join(lines)[:400] if lines else f"{label} 已执行。"
+        刻意不返回原始 JSON：这些内容是要被 TTS 念出来的。
+        对不认识的结果形状，退回「做了什么 + 返回了多少内容」，
+        宁可平淡也不能念一串 JSON。
+        """
+        if not isinstance(res, dict):
+            return "已经执行完毕。"
+        results = res.get("results") or []
+        names = [str(c.get("name") or "") for c in (calls or [])]
+        label = "、".join(names) if names else "工具"
+        lines: List[str] = []
+        for item in results:
+            try:
+                d = json.loads(item) if isinstance(item, str) else item
+            except Exception:
+                d = None
+            if not isinstance(d, dict):
+                lines.append(str(item)[:120])
+                continue
+            if d.get("error"):
+                lines.append(f"{label} 失败：{str(d['error'])[:100]}")
+                continue
+            rs = d.get("results")
+            if isinstance(rs, list) and rs:
+                titles = []
+                for r in rs[:5]:
+                    if isinstance(r, dict):
+                        t = str(r.get("title") or r.get("name") or "").strip()
+                        if t:
+                            titles.append(t[:40])
+                joined = "；".join(titles)
+                lines.append(f"{label} 找到 {len(rs)} 条结果：{joined}" if titles
+                             else f"{label} 返回 {len(rs)} 条结果。")
+            elif d.get("text"):
+                lines.append(f"{label}：{str(d['text'])[:110]}")
+            elif d.get("ok") is False:
+                lines.append(f"{label} 没有成功。")
+            else:
+                body = json.dumps(d, ensure_ascii=False)
+                lines.append(f"{label} 已执行，返回 {len(body)} 字节内容。")
+        return " ".join(lines)[:400] if lines else f"{label} 已执行。"
 
-    # -------------------------------------------------- 人工确认
+        # -------------------------------------------------- 人工确认
 
     def confirm(self, pending_id: str, ok: bool) -> Dict[str, Any]:
         with self._lock:

@@ -442,6 +442,27 @@ def selftest() -> bool:
           and [c["name"] for c in _g["pending"]] == ["delete_file"],
           "★分流正确：低危放行、高危挂起等人工确认")
 
+    # 18. ★类体完整性守卫（v0.8.5）
+    # 两次都栽在同一类错误上：往类体中间插一个**顶层 def**（模块级函数），
+    # 那个类就到此结束，后面的方法全部变成孤儿——AttributeError。
+    # 而 py_compile 依然通过（语法确实合法，语义已坏），自检也照样全绿，
+    # 只有真正调用那个方法时才会炸。所以必须显式断言方法还在。
+    from .core import WarriorCore as _WC
+    from .runtime.jarvis import JarvisRuntime as _JR
+
+    _missing = [m for m in ("start", "send", "ask", "plan_calls",
+                            "execute_calls", "summarize", "_run_turn",
+                            "_warmup_model")
+                if not hasattr(_WC, m)]
+    check(not _missing,
+          f"★WarriorCore 方法齐全（缺: {_missing or '无'}）")
+    _missing_j = [m for m in ("start", "stop", "status", "handle_text",
+                              "_think_and_act", "confirm", "transcribe",
+                              "_speak", "say_text", "_digest_results")
+                  if not hasattr(_JR, m)]
+    check(not _missing_j,
+          f"★JarvisRuntime 方法齐全（缺: {_missing_j or '无'}）")
+
     print("-" * 58)
     print("自检结果：" + ("通过" if ok else "失败"))
     return ok
