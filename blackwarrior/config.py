@@ -203,6 +203,11 @@ class Config:
         self._path = Path(path) if path else paths.config_path()
         self._lock = threading.RLock()
         self._data: Dict[str, Any] = dict(DEFAULTS)
+        # 损坏状态：任何构造路径都要有这两个属性，否则 status / public_dict
+        # 在"配置是内存传入"的路径下会 AttributeError（自检才发现的坑）。
+        self.corrupted: Optional[str] = None
+        self.corrupted_detail: str = ""
+        self.recovered_from_backup: bool = False
         if data:
             self._data.update(dict(data))
         else:
@@ -212,15 +217,43 @@ class Config:
     # ------- 持久化 -----------------------------------------------
 
     def _load_from_disk(self) -> None:
-        try:
-            if self._path.exists():
-                raw = json.loads(self._path.read_text(encoding="utf-8"))
-                if isinstance(raw, dict):
-                    merged = self._migrate(raw)
-                    self._data.update(merged)
-        except Exception:
-            # 配置损坏不应该让程序起不来：保留默认值继续跑。
-            pass
+        """读配置。**主文件坏了自动回退到 .bak**（2026-10-07 加）。
+
+        事故背景：蓝屏打断写入，config.json 变成 2001 字节全 NUL，
+        API Key 一起丢失、实例静默退回未激活——用户只看到"模型不可用"，
+        不知道配置已经损坏。这里把"配置坏了"和"没配过"区分开：
+        能恢复就自动恢复（并留证据），恢复不了才用默认值，并在
+        ``corrupted`` 标记里如实说明。
+        """
+        self.corrupted: Optional[str] = None
+        self.recovered_from_backup: bool = False
+        for candidate in (self._path,
+                          self._path.with_suffix(self._path.suffix + ".bak")):
+            try:
+                if not candidate.exists():
+                    continue
+                raw = candidate.read_text(encoding="utf-8")
+                if not raw.strip():
+                    raise ValueError("配置文件是空的")
+                parsed = json.loads(raw)
+                if not isinstance(parsed, dict):
+                    raise ValueError(f"顶层不是对象（{type(parsed).__name__}）")
+                merged = self._migrate(parsed)
+                self._data.update(merged)
+                if candidate != self._path:
+                    self.recovered_from_backup = True
+                    self.corrupted = (f"{self._path} 已损坏"
+                                      f"（{self.corrupted_detail or '内容非法'}），"
+                                      f"已从 {candidate.name} 自动恢复")
+                return
+            except FileNotFoundError:
+                continue
+            except Exception as ex:
+                self.corrupted_detail = f"{type(ex).__name__}: {ex}"
+                self.corrupted = (f"配置读取失败：{self._path}"
+                                  f"（{type(ex).__name__}: {ex}）")
+                continue
+        # 都没有：第一次运行（正常）或全部损坏（异常，如实标注）
 
     def _migrate(self, raw: Dict[str, Any]) -> Dict[str, Any]:
         """配置升级。新增字段用默认值补齐，旧字段保留。"""
@@ -274,16 +307,70 @@ class Config:
                                           self._data.get(key))
 
     def save(self) -> Path:
-        """落盘。用临时文件 + 原子替换，避免写一半断电导致配置全丢。"""
+        """落盘。**先验证再替换**，并保留上一份好配置做备份。
+
+        为什么要这么讲究（2026-10-07 真实事故）：
+        配置里存着 API Key，是这台机器上最难重建的一个值。原实现只做
+        「写 tmp → os.replace」，看着已经原子了，但实测仍然出现过
+        **2001 字节全为 NUL 的 config.json**——文件长度对、内容全空，
+        于是 Key 一起没了，实例退回未激活。
+
+        现在加三道保险，任何一道都能把"配置彻底报废"降级成"可恢复"：
+
+        1. 写完 tmp 后 **重新读回来 json.loads 校验**，坏了就地放弃，
+           绝不 replace——宁可这次设置没保存，也不能把好配置写坏；
+        2. replace 之前把**当前好配置**另存为 ``config.json.bak``，
+           万一真出事可以一行代码回滚；
+        3. ``fsync`` 后再 replace，断电/蓝屏时数据真正落到盘上
+           （否则 replace 可能成功、但内容还在页缓存里）。
+        """
         with self._lock:
             self._path.parent.mkdir(parents=True, exist_ok=True)
+            payload = json.dumps(self._data, ensure_ascii=False, indent=2)
             tmp = self._path.with_suffix(self._suffix() + ".tmp")
-            tmp.write_text(
-                json.dumps(self._data, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
+            try:
+                with open(tmp, "w", encoding="utf-8") as f:
+                    f.write(payload)
+                    f.flush()
+                    os.fsync(f.fileno())      # 真正落盘，别只进页缓存
+                # ★ 回读校验：坏内容绝不允许 replace 掉好配置
+                json.loads(tmp.read_text(encoding="utf-8"))
+            except Exception as ex:
+                try:
+                    if tmp.exists():
+                        tmp.unlink()
+                except Exception:
+                    pass
+                raise RuntimeError(
+                    f"配置写入校验失败，已放弃本次保存（原配置未动）："
+                    f"{type(ex).__name__}: {ex}") from ex
+            # 备份当前好配置（只在它本身是合法 JSON 时才备份）
+            try:
+                if self._path.exists():
+                    old = self._path.read_text(encoding="utf-8")
+                    json.loads(old)            # 坏文件不备份，别把垃圾存成"好"
+                    self._path.with_suffix(
+                        self._suffix() + ".bak").write_text(old, encoding="utf-8")
+            except Exception:
+                pass                          # 备份失败不阻断保存
             os.replace(tmp, self._path)
             return self._path
+
+    def restore_backup(self) -> bool:
+        """从 ``config.json.bak`` 恢复。返回是否真的恢复了。"""
+        bak = self._path.with_suffix(self._suffix() + ".bak")
+        try:
+            if not bak.exists():
+                return False
+            raw = bak.read_text(encoding="utf-8")
+            data = json.loads(raw)
+            if not isinstance(data, dict):
+                return False
+            self._data.update(data)
+            self.save()
+            return True
+        except Exception:
+            return False
 
     def _suffix(self) -> str:
         return self._path.suffix or ".json"

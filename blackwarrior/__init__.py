@@ -374,6 +374,33 @@ def selftest() -> bool:
     except Exception as ex:
         check(False, f"MCP 工具放行守卫异常：{type(ex).__name__}: {ex}")
 
+    # 16. 配置持久化韧性（v0.7.2）—— 2026-10-07 真实事故的回归守卫
+    # 蓝屏打断写入导致 config.json 变成 2001 字节全 NUL，API Key 一起丢失，
+    # 实例静默退回"未激活"。这里钉住三件事：备份、自动恢复、坏内容不许 replace。
+    import tempfile as _tf
+    import json as _j
+    from .config import Config as _Cfg2
+    _cdir = _tf.mkdtemp(prefix="bw-cfg-")
+    _cpath = os.path.join(_cdir, "config.json")
+    _c1 = _Cfg2(path=_cpath, data={"api_key": "sk-selftest-abcdef"})
+    _c1.save()                       # 第一次保存（无旧文件可备份）
+    _c1.set("model", "deepseek-chat")
+    _c1.save()                       # 第二次保存 → 应产生 .bak
+    check(os.path.exists(_cpath + ".bak"), "★配置保存会留一份 .bak 备份")
+    with open(_cpath, "wb") as _f:
+        _f.write(b"\x00" * 2001)     # 复现事故：全 NUL
+    _c2 = _Cfg2(path=_cpath)
+    check(_c2.get("api_key") == "sk-selftest-abcdef",
+          "★主配置损坏时自动从 .bak 恢复（API Key 不再随崩溃丢失）")
+    check(_c2.recovered_from_backup and bool(_c2.corrupted),
+          "恢复走的是备份且如实标注原文件已损坏")
+    os.remove(_cpath + ".bak")
+    with open(_cpath, "w", encoding="utf-8") as _f:
+        _f.write("")                 # 空文件 + 无备份 → 降级但不崩
+    _c3 = _Cfg2(path=_cpath)
+    check(bool(_c3.corrupted) and "provider" in _c3.public_dict(),
+          "无可用备份时安全降级，且设置页不会因此崩")
+
     print("-" * 58)
     print("自检结果：" + ("通过" if ok else "失败"))
     return ok
