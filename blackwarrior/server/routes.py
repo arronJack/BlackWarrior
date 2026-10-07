@@ -46,9 +46,9 @@ def get_jarvis_audio(core, body, params, handler):
     p = unquote(str((params or {}).get("p") or ""))
     if not p:
         return {"error": "缺少 p 参数"}
-    from ..config import data_root
+    from .. import paths as _paths
     try:
-        root = os.path.abspath(data_root())
+        root = os.path.abspath(str(_paths.data_root()))
         full = os.path.abspath(p)
     except Exception as ex:
         return {"error": f"路径无效: {ex}"}

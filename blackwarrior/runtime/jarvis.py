@@ -21,7 +21,7 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional
 
-from ..config import data_root
+from .. import paths as _paths
 from ..events import emit
 from ..voice.wake import (DEFAULT_WAKE_WORD, HIGH_RISK, VoiceState, gate_calls,
                           match_wake)
@@ -70,7 +70,7 @@ class JarvisRuntime:
             return
         try:
             from ..voice.asr_local import LocalASR
-            asr = LocalASR(self.config, data_root=data_root())
+            asr = LocalASR(self.config, data_root=str(_paths.data_root()))
             if asr.available():
                 threading.Thread(target=asr.start, name="jarvis-asr",
                                  daemon=True).start()
@@ -80,7 +80,7 @@ class JarvisRuntime:
 
         try:
             from ..voice.tts_edge import EdgeTTS
-            tts = EdgeTTS(self.config, data_root=data_root())
+            tts = EdgeTTS(self.config, data_root=str(_paths.data_root()))
             if tts.available():
                 threading.Thread(target=tts.start, name="jarvis-tts",
                                  daemon=True).start()
