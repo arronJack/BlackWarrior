@@ -401,6 +401,38 @@ def selftest() -> bool:
     check(bool(_c3.corrupted) and "provider" in _c3.public_dict(),
           "无可用备份时安全降级，且设置页不会因此崩")
 
+    # 17. 贾维斯：唤醒同音容错 + 分级授权（v0.8.0）
+    # 这两条是免提模式的命门：唤醒词听错 = 整个交互废掉；
+    # 授权放太宽 = 音箱放首歌就把文件删了。都钉死。
+    from .voice.wake import classify_tool as _ct
+    from .voice.wake import gate_calls as _gc
+    from .voice.wake import match_wake as _mw
+
+    # ASR 实测把"黑武士"稳定听成"黑午市"、且默认吐繁体
+    _w = _mw("黑午市,幫我搜一下今天的國內新聞。")
+    check(_w["hit"] and "搜一下今天的国内新闻" in _w["rest"],
+          "★ASR 同音错字+繁体仍能唤醒，且正确切出指令")
+    check(_mw("黑土匪跑了")["hit"] is False,
+          "★形近不同音的词不会误唤醒（黑土匪 ≠ 黑武士）")
+    check(_mw("黑")["hit"] is False,
+          "★单字「黑」不唤醒（咳嗽/背景音不误触发）")
+    check(_mw("今天股市怎么样")["hit"] is False,
+          "无关语句不会唤醒")
+
+    check(_ct("web_search")[0] == "low" and _ct("web_read")[0] == "low",
+          "只读工具归为低危（免提不啰嗦）")
+    check(_ct("delete_file")[0] == "high",
+          "★删除归为高危（必须人点确认）")
+    check(_ct("run_shell")[0] == "high" and _ct("write_file")[0] == "high",
+          "执行命令/写文件归为高危")
+    check(_ct("mcp__weather__x")[0] == "high",
+          "★MCP 工具一律高危（外部服务器参数不可预判）")
+    _g = _gc([{"name": "web_search", "args": {}},
+              {"name": "delete_file", "args": {"path": "a"}}])
+    check([c["name"] for c in _g["allowed"]] == ["web_search"]
+          and [c["name"] for c in _g["pending"]] == ["delete_file"],
+          "★分流正确：低危放行、高危挂起等人工确认")
+
     print("-" * 58)
     print("自检结果：" + ("通过" if ok else "失败"))
     return ok

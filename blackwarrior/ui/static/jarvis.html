@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>黑武士 · 全息面板</title>
+<style>
+  /* ============================================================
+     波纹面板 —— 贾维斯式的存在感
+     视觉规则只有一条：**波纹是麦克风的真实电平**。
+     说话时波纹跟着你的声音起伏，不说话就是一条静止的线。
+     这样"它是否在听"永远是一眼可辨的事实，而不是一个图标。
+     ============================================================ */
+  :root {
+    --bg:#04070d; --ink:#e8f4ff;
+    --idle:#2a4a63; --listen:#35e0ff; --think:#7a6bff;
+    --speak:#39ffb0; --warn:#ffb020; --danger:#ff4d5e;
+    --glow:0 0 18px currentColor;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { height:100%; overflow:hidden; background:var(--bg); }
+  body {
+    font-family:"HarmonyOS Sans SC","Microsoft YaHei UI","PingFang SC",system-ui,sans-serif;
+    color:var(--ink); display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:0;
+    -webkit-user-select:none; user-select:none;
+  }
+  /* 背景：极淡的网格 + 中心辉光，给面板一点"空间感" */
+  #bg { position:fixed; inset:0; pointer-events:none; }
+  #bg::before {
+    content:""; position:absolute; inset:0;
+    background:
+      radial-gradient(ellipse 60% 45% at 50% 46%, rgba(53,224,255,.10), transparent 70%),
+      radial-gradient(ellipse 90% 70% at 50% 100%, rgba(122,107,255,.06), transparent 70%);
+  }
+  #bg::after {
+    content:""; position:absolute; inset:0; opacity:.16;
+    background-image:
+      linear-gradient(rgba(120,200,255,.12) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(120,200,255,.12) 1px, transparent 1px);
+    background-size:64px 64px;
+    mask-image:radial-gradient(ellipse 70% 60% at 50% 50%, #000 30%, transparent 78%);
+  }
+
+  #stage { position:relative; width:100%; height:340px; display:flex;
+           align-items:center; justify-content:center; }
+  canvas { width:100%; height:340px; display:block; }
+
+  /* 状态标签：贴在波纹正上方，一眼看出它处于什么状态 */
+  #state {
+    position:absolute; top:14px; left:50%; transform:translateX(-50%);
+    font-size:12px; letter-spacing:.42em; text-transform:uppercase;
+    padding:5px 16px 5px 20px; border-radius:999px;
+    border:1px solid currentColor; opacity:.0;
+    transition:opacity .35s ease; white-space:nowrap; font-weight:500;
+  }
+  #state.on { opacity:.92; }
+
+  /* 主文本：唤醒/回复内容 */
+  #say {
+    position:relative; margin-top:6px; min-height:2.4em; max-width:78%;
+    text-align:center; font-size:20px; line-height:1.65; font-weight:300;
+    letter-spacing:.04em; text-shadow:0 0 22px rgba(53,224,255,.28);
+  }
+  #say .you { color:#8fb6cf; font-size:14px; display:block; margin-bottom:10px;
+              opacity:0; transition:opacity .3s; }
+  #say .you.on { opacity:.85; }
+  #say .me  { color:var(--ink); }
+
+  /* 授权确认卡：只有高危操作才出现 */
+  #confirm {
+    position:relative; margin-top:18px; width:min(620px,86vw);
+    border:1px solid var(--warn); border-radius:14px; padding:16px 18px;
+    background:linear-gradient(180deg, rgba(255,176,32,.10), rgba(255,176,32,.03));
+    box-shadow:0 0 40px rgba(255,176,32,.16);
+    display:none; opacity:0; transform:translateY(8px);
+    transition:opacity .28s ease, transform .28s ease;
+  }
+  #confirm.on { display:block; opacity:1; transform:translateY(0); }
+  #confirm h4 { font-size:13px; letter-spacing:.18em; color:var(--warn);
+                margin-bottom:10px; font-weight:600; }
+  #confirm .item { font-size:14px; line-height:1.6; margin-bottom:8px;
+                   color:#ffd79a; word-break:break-all; }
+  #confirm .item code { background:rgba(0,0,0,.35); padding:2px 6px;
+                        border-radius:4px; font-size:12.5px;
+                        color:#ffe9c2; font-family:Consolas,monospace; }
+  #confirm .why { font-size:12.5px; color:#c9a978; margin-top:10px;
+                  padding-top:10px; border-top:1px dashed rgba(255,176,32,.3); }
+  #confirm .acts { display:flex; gap:10px; margin-top:14px; }
+  button {
+    flex:1; padding:10px 16px; border-radius:9px; font-size:14px; cursor:pointer;
+    border:1px solid currentColor; background:transparent; color:var(--ink);
+    font-family:inherit; letter-spacing:.08em; transition:all .18s;
+  }
+  button.go   { color:var(--warn); border-color:var(--warn);
+                background:rgba(255,176,32,.12); font-weight:600; }
+  button.go:hover { background:rgba(255,176,32,.26); box-shadow:0 0 22px rgba(255,176,32,.3); }
+  button.no:hover { background:rgba(255,77,94,.18); color:var(--danger);
+                    border-color:var(--danger); }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+
+  /* 底部操作条 */
+  #bar {
+    position:fixed; bottom:22px; left:50%; transform:translateX(-50%);
+    display:flex; gap:10px; align-items:center;
+  }
+  #bar button { flex:none; padding:8px 18px; font-size:13px; }
+  #mic.on { color:var(--listen); border-color:var(--listen);
+            background:rgba(53,224,255,.12); }
+  #hint { font-size:11.5px; color:#5f7d92; letter-spacing:.1em; margin-left:8px; }
+  #dot { width:7px; height:7px; border-radius:50%; background:var(--idle);
+         display:inline-block; margin-right:7px; vertical-align:middle;
+         transition:background .3s, box-shadow .3s; }
+</style>
+</head>
+<body>
+<div id="bg"></div>
+<div id="stage">
+  <canvas id="cv"></canvas>
+  <div id="state">静默</div>
+</div>
+<div id="say"><span class="you" id="youText"></span><span class="me" id="meText"></span></div>
+
+<div id="confirm">
+  <h4>⚠ 需要你确认 —— 这类操作语音不能直接放行</h4>
+  <div id="cItems"></div>
+  <div class="why" id="cWhy"></div>
+  <div class="acts">
+    <button class="go" id="cOk">确认执行</button>
+    <button class="no" id="cNo">取消</button>
+  </div>
+</div>
+
+<div id="bar">
+  <button id="mic">🎤 开启麦克风</button>
+  <button id="mute" title="打断它">打断</button>
+  <span id="hint"><span id="dot"></span><span id="hintText">未开启</span></span>
+</div>
+
+<script>
+'use strict';
+/* ============================================================
+   波纹绘制
+   ------------------------------------------------------------
+   波形的纵坐标完全由 **真实音频电平** 驱动，不是随机动画：
+     listening → 麦克风 AnalyserNode 的 RMS
+     speaking  → 正在播报的 TTS 的 AnalyserNode
+     thinking  → 电平衰减到0，改用一条**内缩的慢脉冲**表示"在想"
+     idle      → 完全静止的一条线
+   这一点是刻意的：面板是"它状态"的唯一真相来源，不能是装饰。
+   ============================================================ */
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const COLORS = {
+  idle:    '#2a4a63',
+  waiting: '#1d6d8f',
+  listening:'#35e0ff',
+  thinking:'#7a6bff',
+  speaking:'#39ffb0',
+  confirm: '#ffb020',
+};
+const LABEL = {
+  idle:'静默', waiting:'待命', listening:'聆听中',
+  thinking:'思考中', speaking:'回应中', confirm:'等待确认',
+};
+
+let state = 'idle';
+let energy = 0;        // 平滑后的电平0..1
+let rawLevel = 0;
+let phase = 0;         // 思考态的脉冲相位
+let t0 = performance.now();
+
+function fitCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w * dpr; cv.height = h * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', fitCanvas);
+fitCanvas();
+
+/** 生成一帧波形的采样点。center 为中线，amp 为振幅。 */
+function wavePoints(w, h, amp, mode) {
+  const n = Math.max(48, Math.floor(w / 6));
+  const pts = [];
+  const mid = h / 2;
+  for (let i = 0; i <= n; i++) {
+    const x = (i / n) * w;
+    const u = i / n;                       // 0..1
+    // 窗函数：中间饱满，两端收敛，像一道真正的波
+    const win = Math.sin(Math.PI * u);
+    let y;
+    if (mode === 'still') {
+      y = 0;                                 // 静默：一条直线
+    } else {
+      // 双频叠加 + 轻微噪声，避免看起来像机械正弦
+      const a = Math.sin(u * Math.PI * 2 * 2.0 + phase * 1.7);
+      const b = Math.sin(u * Math.PI * 2 * 5.3 - phase * 2.3);
+      const c = Math.sin(u * Math.PI * 2 * 11.0 + phase * 3.1) * 0.35;
+      y = (a * 0.55 + b * 0.3 + c) * win;
+    }
+    pts.push([x, mid + y * amp]);
+  }
+  return pts;
+}
+
+function draw() {
+  const w = cv.clientWidth, h = cv.clientHeight;
+  ctx.clearRect(0, 0, w, h);
+
+  const color = COLORS[state] || COLORS.idle;
+  const k = state === 'speaking' ? 0.12 : 0.16;   // 平滑系数
+  energy += (rawLevel - energy) * k;
+  phase += state === 'thinking' ? 0.035 : 0.02;
+
+  let amp, mode;
+  if (state === 'idle') {
+    amp = 0; mode = 'still';                        // ← 平静的直线
+  } else if (state === 'waiting') {
+    amp = 3 + Math.sin(phase * 1.2) * 2.4; mode = 'wave';   // 极轻微"呼吸"
+  } else if (state === 'thinking') {
+    amp = 10 + Math.sin(phase) * 7; mode = 'wave'; // 内缩的慢脉冲
+  } else if (state === 'listening') {
+    amp = 6 + energy * h * 0.42; mode = 'wave';
+  } else if (state === 'speaking') {
+    amp = 8 + energy * h * 0.46; mode = 'wave';
+  } else { // confirm
+    amp = 14 + Math.abs(Math.sin(phase * 2.2)) * 9; mode = 'wave';
+  }
+
+  const pts = wavePoints(w, h, amp, mode);
+
+  // 中线：静默时可见（那条"平静的直线"），有声音时淡出
+  if (state === 'idle') {
+    ctx.strokeStyle = COLORS.idle;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2);
+    ctx.stroke();
+    // 中心一个小点，暗示"它在这儿，只是没在说话"
+    ctx.fillStyle = COLORS.idle;
+    ctx.beginPath(); ctx.arc(w/2, h/2, 2.6, 0, Math.PI*2); ctx.fill();
+  }
+
+  // 波形本体
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = state === 'idle' ? 0 : 14;
+  ctx.beginPath();
+  pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]));
+  ctx.stroke();
+
+  // 镜像一层，双向对称更像"波场"而不是单条线
+  ctx.globalAlpha = 0.28;
+  ctx.beginPath();
+  pts.forEach((p, i) => i ? ctx.lineTo(p[0], h - (p[1] - h/2)) : ctx.moveTo(p[0], h - (p[1] - h/2)));
+  ctx.stroke();
+  ctx.restore();
+
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+
+/* ---------------- 状态切换 ---------------- */
+function setState(s) {
+  if (!COLORS[s]) return;
+  state = s;
+  const el = document.getElementById('state');
+  el.textContent = LABEL[s];
+  el.style.color = COLORS[s];
+  el.classList.toggle('on', s !== 'idle');
+  document.documentElement.style.setProperty('--glow', '0 0 18px ' + COLORS[s]);
+}
+
+/* ---------------- 音频采集 ---------------- */
+let audioCtx = null, micAnalyser = null, micStream = null, micData = null;
+let outAnalyser = null, outData = null;
+let listeningOn = false;
+
+async function startMic() {
+  if (listeningOn) return true;
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation:true, noiseSuppression:true, autoGainControl:true }
+    });
+    const src = audioCtx.createMediaStreamSource(micStream);
+    micAnalyser = audioCtx.createAnalyser();
+    micAnalyser.fftSize = 1024;
+    micAnalyser.smoothingTimeConstant = 0.6;
+    src.connect(micAnalyser);           // 不连 destination，避免回授啸叫
+    micData = new Uint8Array(micAnalyser.fftSize);
+    listeningOn = true;
+    document.getElementById('mic').classList.add('on');
+    document.getElementById('mic').textContent = '🎤 聆听中';
+    setHint('说「黑武士」唤醒');
+    setState('waiting');
+    pumpMic();
+    return true;
+  } catch (err) {
+    setHint('麦克风不可用：' + (err && err.message ? err.message : err));
+    return false;
+  }
+}
+
+function rms(a) {
+  let s = 0;
+  for (let i = 0; i < a.length; i++) { const v = (a[i]-128)/128; s += v*v; }
+  return Math.sqrt(s / a.length);
+}
+
+/** 把麦克风电平喂给波纹。**这里不上传任何音频**，
+    只有 VAD 判定"有人在说话"时才会去取一段送去识别。 */
+function pumpMic() {
+  if (!micAnalyser) return;
+  micAnalyser.getByteTimeDomainData(micData);
+  const lvl = rms(micData);
+  // 噪声门限：环境底噪不该让面板乱动
+  rawLevel = Math.max(0, Math.min(1, (lvl - 0.012) * 9));
+  if (state === 'waiting' || state === 'listening') requestAnimationFrame(pumpMic);
+}
+
+/* ---------------- 与内核对话 ---------------- */
+const $ = id => document.getElementById(id);
+const API = {
+  async post(p, b) {
+    const r = await fetch(p, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(b || {})
+    });
+    const t = await r.text();
+    try { return JSON.parse(t); } catch(_) { return { error:t }; }
+  },
+  async get(p) {
+    const r = await fetch(p);
+    const t = await r.text();
+    try { return JSON.parse(t); } catch(_) { return { error:t }; }
+  }
+};
+
+let pendingId = null;
+
+function say(meText, youText) {
+  $('meText').textContent = meText || '';
+  $('youText').textContent = youText || '';
+  $('youText').classList.toggle('on', !!youText);
+}
+
+function setHint(t) { $('hintText').textContent = t; }
+
+/** 播 TTS 音频，并用它的真实电平驱动波纹。 */
+async function playTts(path) {
+  if (!path) return;
+  try {
+    const res = await fetch('/api/jarvis/audio?p=' + encodeURIComponent(path));
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const el = new Audio(url);
+    const src = audioCtx.createMediaElementSource(el);
+    const an = audioCtx.createAnalyser();
+    an.fftSize = 1024; an.smoothingTimeConstant = 0.5;
+    src.connect(an); an.connect(audioCtx.destination);
+    outAnalyser = an; outData = new Uint8Array(an.fftSize);
+    setState('speaking');
+    rawLevel = 0;
+    await new Promise((res2) => {
+      const pump = () => {
+        if (!outAnalyser) return;
+        an.getByteTimeDomainData(outData);
+        rawLevel = Math.max(0, Math.min(1, (rms(outData) - 0.01) * 7));
+        if (!el.paused && !el.ended) requestAnimationFrame(pump);
+      };
+      el.onended = () => { URL.revokeObjectURL(url); outAnalyser = null; res2(); };
+      el.play().catch(() => res2());
+      pump();
+    });
+  } catch (_) { /* 出声失败就只留文字，不打断流程 */ }
+}
+
+/** 一次完整的「听到 → 想 → 答」。 */
+async function handleUtterance(text) {
+  say('', text);
+  setState('thinking');
+  const r = await API.post('/api/jarvis/utterance', { text });
+  if (r.error) { say('（' + r.error + '）', text); setState('waiting'); return; }
+
+  // 只唤醒没带指令 → 先应一声，再回到待命
+  if (r.kind === 'wake') {
+    const greet = r.reply || '在的主人';
+    say(greet, text);
+    await playTts(r.audio);
+    setState('waiting');
+    return;
+  }
+
+  if (r.kind === 'confirm') {
+    showConfirm(r);
+    say(r.reply || '这一步需要你点一下确认。', text);
+    await playTts(r.audio);
+    setState('confirm');
+    return;
+  }
+
+  say(r.reply || '（没有话说）', text);
+  await playTts(r.audio);
+  setState('waiting');
+}
+
+function showConfirm(r) {
+  pendingId = r.pending_id;
+  const box = $('cItems'); box.innerHTML = '';
+  (r.pending || []).forEach(p => {
+    const d = document.createElement('div');
+    d.className = 'item';
+    d.innerHTML = '<b>' + esc(p.name) + '</b> ' + esc(JSON.stringify(p.args || {}));
+    box.appendChild(d);
+  });
+  $('cWhy').textContent = r.reason || '';
+  $('confirm').classList.add('on');
+}
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g,
+    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
+$('cOk').onclick = async () => {
+  if (!pendingId) return;
+  $('cOk').disabled = true;
+  const r = await API.post('/api/jarvis/confirm', { pending_id: pendingId, ok: true });
+  $('confirm').classList.remove('on');
+  $('cOk').disabled = false;
+  pendingId = null;
+  say(r.reply || '已执行。');
+  await playTts(r.audio);
+  setState('waiting');
+};
+$('cNo').onclick = async () => {
+  if (!pendingId) return;
+  await API.post('/api/jarvis/confirm', { pending_id: pendingId, ok: false });
+  $('confirm').classList.remove('on');
+  pendingId = null;
+  say('好，已取消。');
+  setState('waiting');
+};
+
+$('mic').onclick = () => { if (!listeningOn) startMic(); };
+$('mute').onclick = () => { say('（已打断）'); setState(listeningOn ? 'waiting' : 'idle'); };
+
+/* ---------------- 状态事件流 ---------------- */
+(function poll() {
+  API.get('/api/jarvis/state').then((s) => {
+    if (s && s.state && s.state !== state) {
+      // 只在空闲态接受外部状态变更，别把"正在说话"抢掉
+      if (state === 'idle' || state === 'waiting') setState(s.state);
+    }
+    if (s && s.hint) setHint(s.hint);
+  }).catch(() => {});
+  setTimeout(poll, 1200);
+})();
+
+setState('idle');
+setHint('点「开启麦克风」开始');
+</script>
+</body>
+</html>

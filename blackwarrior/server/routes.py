@@ -19,6 +19,113 @@ def _json(fn):  # noqa: ANN001 - 装饰签名通用的 handler
     return fn
 
 
+# ============================================================ 贾维斯面板
+
+def _jarvis(core):  # noqa: ANN001 - 运行时就挂在 core 上
+    rt = getattr(core, "jarvis", None)
+    if rt is None:
+        from ..runtime.jarvis import JarvisRuntime
+        rt = core.jarvis = JarvisRuntime(core)
+    return rt
+
+
+def get_jarvis_state(core, body, params, handler):
+    """面板轮询：当前状态 + 语音组件就绪情况。"""
+    return _jarvis(core).status()
+
+
+def get_jarvis_audio(core, body, params, handler):
+    """把 TTS 产出的音频文件读出来给面板播放。
+
+    只允许读自己 data 目录下的音频——这是把本地文件暴露成 HTTP 的入口，
+    参数一旦能被穿越，就等于开了任意文件读取。
+    """
+    import os
+    from urllib.parse import unquote
+
+    p = unquote(str((params or {}).get("p") or ""))
+    if not p:
+        return {"error": "缺少 p 参数"}
+    from ..config import data_root
+    try:
+        root = os.path.abspath(data_root())
+        full = os.path.abspath(p)
+    except Exception as ex:
+        return {"error": f"路径无效: {ex}"}
+    # 前缀比对要用 os.path.commonpath，startswith 会被
+    # "C:\data_evil" 这种同前缀目录绕过。
+    try:
+        if os.path.commonpath([root, full]) != root:
+            return {"error": "只能播放 data 目录内的音频"}
+    except ValueError:
+        return {"error": "路径不在 data 目录内"}
+    if not os.path.isfile(full):
+        return {"error": "音频不存在"}
+    ext = os.path.splitext(full)[1].lower()
+    ctype = {".wav": "audio/wav", ".mp3": "audio/mpeg",
+             ".m4a": "audio/mp4", ".ogg": "audio/ogg"}.get(ext)
+    if not ctype:
+        return {"error": "不支持的音频格式"}
+    try:
+        with open(full, "rb") as f:
+            raw = f.read()
+    except Exception as ex:
+        return {"error": f"读取失败: {ex}"}
+    handler.send_response(200)
+    handler.send_header("Content-Type", ctype)
+    handler.send_header("Content-Length", str(len(raw)))
+    handler.send_header("Cache-Control", "no-store")
+    handler.end_headers()
+    try:
+        handler.wfile.write(raw)
+    except Exception:
+        pass
+    return None
+
+
+def post_jarvis_transcribe(core, body, params, handler):
+    """面板录到一段语音 → 识别成文字。
+
+    这里**只做识别**，不做任何判断：唤醒判定、授权分流都在
+    :meth:`JarvisRuntime.handle_text` 里，识别层不碰策略。
+    """
+    import base64
+    import os
+    import tempfile
+
+    raw = (body or {}).get("audio_b64") or ""
+    if not raw:
+        return {"error": "缺少 audio_b64"}
+    # 一次只接受一小段（唤醒片段通常 1-5 秒），别让人往里塞大文件
+    if len(raw) > 8 * 1024 * 1024:
+        return {"error": "音频过大（超过 8MB）"}
+    ext = ".wav" if str((body or {}).get("mime", "")).find("wav") >= 0 else ".webm"
+    path = os.path.join(tempfile.gettempdir(),
+                        f"bw_jarvis_{os.getpid()}_{len(raw)}.wav")
+    try:
+        with open(path, "wb") as f:
+            f.write(base64.b64decode(raw))
+    except Exception as ex:
+        return {"error": f"解码失败: {ex}"}
+    return _jarvis(core).transcribe(path)
+
+
+def post_jarvis_utterance(core, body, params, handler):
+    """面板送来一句文本 → 完整流程（唤醒→授权→执行→开口）。"""
+    text = str((body or {}).get("text") or "").strip()
+    if not text:
+        return {"error": "缺少 text"}
+    return _jarvis(core).handle_text(text)
+
+
+def post_jarvis_confirm(core, body, params, handler):
+    """人工确认高危动作。ok=False 即取消。"""
+    pid = str((body or {}).get("pending_id") or "")
+    if not pid:
+        return {"error": "缺少 pending_id"}
+    return _jarvis(core).confirm(pid, bool((body or {}).get("ok")))
+
+
 # ============================================================ 基础
 
 def get_health(core, body, params, handler):
@@ -804,6 +911,13 @@ def build_routes() -> Dict[Tuple[str, str], Callable[..., Any]]:
         ("GET", "/api/access"): get_access,
         ("POST", "/api/access/grant"): post_access_grant,
         ("POST", "/api/access/revoke"): post_access_revoke,
+
+        # ---- v0.8.0：贾维斯面板（唤醒 / 免提 / 授权确认）----
+        ("GET", "/api/jarvis/state"): get_jarvis_state,
+        ("GET", "/api/jarvis/audio"): get_jarvis_audio,
+        ("POST", "/api/jarvis/transcribe"): post_jarvis_transcribe,
+        ("POST", "/api/jarvis/utterance"): post_jarvis_utterance,
+        ("POST", "/api/jarvis/confirm"): post_jarvis_confirm,
 
         ("GET", "/api/settings"): get_settings,
         ("POST", "/api/settings"): post_settings,

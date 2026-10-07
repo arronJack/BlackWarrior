@@ -14,6 +14,25 @@
 
 from __future__ import annotations
 
-from .service import VoiceService, build_voice_service
+from typing import Any, Optional
 
-__all__ = ["VoiceService", "build_voice_service"]
+from .service import VoiceService, build_voice_service
+from .wake import (DEFAULT_WAKE_WORD, HIGH_RISK, LOW_RISK, TurnSegmenter,
+                   VoiceState, classify_tool, gate_calls, match_wake)
+
+__all__ = [
+    "VoiceService", "build_voice_service",
+    "DEFAULT_WAKE_WORD", "HIGH_RISK", "LOW_RISK",
+    "TurnSegmenter", "VoiceState", "classify_tool", "gate_calls", "match_wake",
+    "build_asr",
+]
+
+
+def build_asr(config: Any = None, data_root: str = "") -> Any:
+    """本地 ASR（离线）。**延迟导入**：faster-whisper 在独立 venv 里，
+    导入失败必须降级而不是让整个内核起不来。"""
+    try:
+        from .asr_local import LocalASR
+        return LocalASR(config, data_root=data_root)
+    except Exception:
+        return None

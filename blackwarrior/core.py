@@ -236,6 +236,103 @@ class WarriorCore:
                                 "之后对话不会再卡在冷启动上")})
         except Exception:
             pass
+
+    # ------------------------------------------------- 计划 / 执行 分离
+
+    def plan_calls(self, text: str) -> Dict[str, Any]:
+        """只推理、**不执行工具**，返回"打算做什么"。
+
+        为什么要单独开这条路：免提模式需要**在动手之前**先把危险动作
+        拦下来给人看。原路径 :meth:`ask` / :meth:`send` 是"想 → 直接
+        执行 → 组织回答"，等它跑完，文件已经删了。所以贾维斯模式必须
+        先拿计划、做完授权分流，再决定执行哪些。
+
+        只跑**一轮**工具决策：拿到调用就返回。真正的回答组织交给
+        :meth:`execute_calls` 之后的第二次调用——这样两次调用的职责
+        清晰，授权边界也不会因为多轮工具而漏掉。
+        """
+        from threading import Event
+
+        # assembler 挂在 turn_runner 上（见 TurnRunner.__init__），
+        # 直接复用它，才能和正常对话走**完全同一套**上下文与工具筛选，
+        # 不会出现"语音路径的工具集和文字路径不一样"这种怪事。
+        ca = getattr(self.turn_runner, "assembler", None)
+        tools = None
+        msgs = None
+        if ca is not None and hasattr(ca, "build"):
+            built = ca.build(text)
+            sys_prompt = ""
+            if isinstance(built, dict):
+                sys_prompt = built.get("system_prompt", "")
+            else:
+                sys_prompt = getattr(built, "system_prompt", "")
+            msgs = [{"role": "system", "content": sys_prompt or
+                     "你是黑武士，一个住在这台电脑里的助手。"},
+                    {"role": "user", "content": text}]
+            sel = []
+            if isinstance(built, dict) and built.get("tools"):
+                sel = built["tools"]
+            elif hasattr(ca, "_select_tools"):
+                sel = ca._select_tools(text)
+            tools = None
+            if sel:
+                norm = []
+                for t in sel:
+                    if not isinstance(t, dict):
+                        continue
+                    fn = t.get("function") if "function" in t else t
+                    name = fn.get("name")
+                    if not name:
+                        continue
+                    norm.append({"type": "function", "function": {
+                        "name": name,
+                        "description": fn.get("description", ""),
+                        "parameters": fn.get("parameters",
+                                             fn.get("input_schema", {})) or {},
+                    }})
+                tools = norm or None
+        if not msgs:
+            msgs = [{"role": "system", "content":
+                     "你是黑武士，一个住在这台电脑里的助手。"},
+                    {"role": "user", "content": text}]
+
+        emit("jarvis_plan_begin", {"text": text[:200]})
+        try:
+            res = self.gateway.complete(msgs, tools=tools, temperature=0.3)
+        except Exception as ex:
+            return {"text": "", "calls": [], "error": str(ex)}
+        calls = []
+        for c in (res.get("tool_calls") or []):
+            name = str(c.get("name") or "")
+            args = c.get("args") or c.get("arguments") or {}
+            if name:
+                calls.append({"name": name, "args": args, "id": c.get("id", "")})
+        emit("jarvis_plan_end", {"n_calls": len(calls),
+                                 "calls": [c["name"] for c in calls]})
+        return {"text": res.get("content", ""), "calls": calls,
+                "error": res.get("error", "")}
+
+    def execute_calls(self, calls: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """执行一批**已获授权**的工具调用，返回 ``{summary, results}``。
+
+        走的仍是 :meth:`TurnRunner._execute_tools`——也就是说 policy
+        安全闸门与 PASM V2 闸门**一道都不会少**。贾维斯模式只是在外面
+        多加了一道"要不要现在动手"的人工确认，不替代内核的任何检查。
+        """
+        from threading import Event
+
+        if not calls:
+            return {"summary": "", "results": []}
+        emit("jarvis_execute_begin", {"n": len(calls),
+                                      "names": [c.get("name") for c in calls]})
+        tool_msgs = self.turn_runner._execute_tools(calls, "jarvis", Event())
+        results = []
+        for m in tool_msgs:
+            body = str(m.get("content") or "")
+            results.append(body[:500])
+        summary = "；".join(r.strip() for r in results if r.strip())[:1200]
+        emit("jarvis_execute_end", {"n": len(results)})
+        return {"summary": summary, "results": results}
         # 恢复上次遗留的任务（转 paused，不自动继续）
         rec = self.recover_tasks()
         if rec.get("recovered"):
