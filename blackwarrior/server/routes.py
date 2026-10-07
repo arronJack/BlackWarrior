@@ -9,7 +9,7 @@ from __future__ import annotations
 import time
 from typing import Any, Callable, Dict, Optional, Tuple
 
-from ..events import BUS
+from ..events import BUS, emit
 from ..llm.providers import list_providers
 from ..runtime import PRIORITY_USER
 from ..version import version_info
@@ -22,10 +22,24 @@ def _json(fn):  # noqa: ANN001 - 装饰签名通用的 handler
 # ============================================================ 贾维斯面板
 
 def _jarvis(core):  # noqa: ANN001 - 运行时就挂在 core 上
+    """取（或懒创建）贾维斯运行时，**并确保它启动过**。
+
+    之前这里只创建不启动：面板能拿到状态，但 ASR/TTS 永远是"未启用"，
+    表现为「面板打开着、麦克风也授权了、但永远没反应」。这种半死不活的
+    状态比直接报错更难查，所以启动放在这里做一次，并保证只做一次。
+    """
     rt = getattr(core, "jarvis", None)
     if rt is None:
         from ..runtime.jarvis import JarvisRuntime
         rt = core.jarvis = JarvisRuntime(core)
+    if not getattr(rt, "started", False):
+        try:
+            rt.start()
+            rt.started = True
+        except Exception as ex:
+            # 启动失败只记事件：面板照常能用，只是没有语音
+            rt.started = True
+            emit("jarvis", {"stage": "start_failed", "error": str(ex)[:200]})
     return rt
 
 

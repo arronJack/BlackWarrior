@@ -42,6 +42,8 @@ class JarvisRuntime:
         self.wake_word: str = self._cfg("wake_word", DEFAULT_WAKE_WORD)
         self.greeting: str = self._cfg("wake_greeting", "") or GREETINGS[0]
         self.enabled: bool = bool(self._cfg("jarvis_enabled", True))
+        #: 由 server/routes._jarvis() 置位，保证只启动一次
+        self.started: bool = False
 
         self.asr = None
         self.tts = None
