@@ -34,6 +34,18 @@ AUTO_TICK_LABEL = "自主 TICK"
 AUTO_TICK_PREFIX = "[自主 TICK]"
 
 
+def _has_content(text: str) -> bool:
+    """判定回复是否有实质内容。
+
+    空串、纯空白、纯标点（如 ``..`` / ``。`` / ``...``）都算「退化输出」，
+    不应作为正常回复呈现给用户，也不应作为后台自主思考的内容塞进聊天。
+    """
+    if not text:
+        return False
+    t = re.sub(r"[\s\.\。\，\,\、\-\—\·\…\+\*\=\！\!？\?]+", "", text.strip())
+    return len(t) > 0
+
+
 class TurnResult:
     """一个回合的结果。"""
 
@@ -134,6 +146,25 @@ class TurnRunner:
             result = self._generate_loop(messages, tools, turn_id, abort)
         else:
             result = self._offline_reply(text, turn_id, built, facts_hint=None)
+
+        # 4.5) 空回复 / 退化回复 兜底 —— 根治「对话是空回复」+ 后台 TICK 污染聊天。
+        #   _generate_loop 只在 text 非空时才 emit reply，于是模型整轮一字未吐
+        #   （或只吐 ``..``）时前端会得到一个**空气泡**或「（空回复）」，
+        #   用户无从下手。这里分两种情形处理：
+        #     · 用户轮：强制模型基于「最新问题」无工具重生成一次；仍空则给明确报错。
+        #     · 后台自主 TICK：退化输出直接丢弃，既不污染聊天，也不报警。
+        if not _has_content(result.text) and not result.aborted:
+            if not result.error:
+                if is_auto:
+                    result.text = ""
+                else:
+                    forced = self._force_reply(messages, turn_id, abort)
+                    if _has_content(forced):
+                        result.text = forced
+                        emit("reply", {"turn_id": turn_id, "text": forced})
+                    else:
+                        result.error = ("模型本次未返回任何内容（可能是限流或网络抖动），"
+                                        "请稍后重试")
 
         # 5) 落库 + 记忆沉淀（两条路径**都必须**走到这里）
         #    早期只有模型路径沉淀，导致离线对话"聊完什么都不记得"。
@@ -306,6 +337,32 @@ class TurnRunner:
         if text:
             emit("reply", {"turn_id": turn_id, "text": text})
         return TurnResult(text, tool_calls=all_calls, rounds=rounds, error=error)
+
+    def _force_reply(self, messages: List[Dict[str, Any]], turn_id: str,
+                     abort: Optional[Event]) -> str:
+        """空回复兜底：强制模型无工具重生成一次。
+
+        仅在 ``_generate_loop`` 整轮未产出有效内容时调用。给一条系统级提醒，
+        要求模型就「用户最新问题」给出完整回答，避免它继续空转。
+        """
+        nudged = list(messages) + [{
+            "role": "system",
+            "content": ("重要：你刚才的回复为空或只有标点。请就用户最新的问题，"
+                        "给出一个完整、有实质内容、可直接使用的回答。"
+                        "不要留空，不要只发标点或省略号。"),
+        }]
+        buf: List[str] = []
+        try:
+            for ev in self.gateway.stream(nudged, tools=None, abort=abort):
+                if ev.get("type") == "delta":
+                    chunk = ev.get("text") or ""
+                    buf.append(chunk)
+                    emit("reply_delta", {"turn_id": turn_id, "text": chunk})
+                elif ev.get("type") == "error" and not ev.get("aborted"):
+                    return ""
+        except Exception:
+            return ""
+        return "".join(buf).strip()
 
     def _verify_claims(self, text: str) -> Dict[str, Any]:
         """输出前用 V2 逻辑层校验结论性声明（``pasm2_verify_claims`` 开启时）。

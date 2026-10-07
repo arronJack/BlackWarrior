@@ -313,12 +313,20 @@ class ContextAssembler:
             "web": ("搜索", "网页", "联网", "查一下", "新闻", "search", "http"),
             "memory": ("记得", "记住", "之前", "回忆", "忘了", "记忆"),
             "system": ("提醒", "状态", "时间", "几点", "remind"),
+            "task": ("任务", "待办", "提醒我做", "计划", "安排", "task", "todo"),
+            "media": ("媒体", "视频", "图片", "音乐", "照片", "扫描", "media"),
         }
         for cat, kws in rules.items():
             if any(k in text for k in kws):
                 wanted.add(cat)
         if not wanted:
-            wanted = {"memory", "system"}
+            # ★ 2026-10-07 修复「58 个工具却什么也干不了」：
+            #   原先无关键词命中时只给 memory+system，导致文件/网页/命令/任务
+            #   工具根本递不到模型手里，用户感觉「黑武士什么也做不了」。
+            #   作者原注释也承认「误伤的轮次成本 > 省下的 token」，故这里
+            #   默认放开全部工具，由模型自行决定是否调用——宁可多带 schema，
+            #   也不漏掉用户真正想让它执行的动作。
+            return all_tools
 
         try:
             specs = self.ctx.tools.specs()
