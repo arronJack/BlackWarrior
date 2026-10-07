@@ -24,12 +24,17 @@ const READY_PREFIX = '[BW-READY]';
 const HEALTH_TIMEOUT_MS = 90 * 1000;   // 首次冷启动给足时间
 
 let win = null;
+let jarvis = null;         // 贾维斯面板（无边框置顶小窗）
 let tray = null;
 let kernel = null;          // Python 子进程
 let kernelUrl = null;
 let kernelPort = 0;
 let quitting = false;
 let bootLog = [];
+
+// 面板状态：托盘图标靠它变色，用户一眼知道它在不在听
+const JARVIS_W = 900;
+const JARVIS_H = 560;
 
 // ---------------------------------------------------------- 基础工具
 
@@ -256,32 +261,180 @@ function loadApp() {
   }
 }
 
+// ---------------------------------------------------------- 贾维斯面板
+
+/**
+ * 贾维斯面板：无边框、置顶、可穿透点击的小窗。
+ *
+ * 为什么单独开一个窗口而不是塞进主界面：
+ * 主界面是1280x800 的工作台，而这个面板的定位是**常驻在屏幕边缘、
+ * 随时能被喊醒**。把它做成独立小窗才能做到「不打断你正在做的事」。
+ *
+ * 三个刻意的取舍：
+ *   1. `transparent: true` + `frame: false` —— 无边框窗口在 Windows 上
+ *      必须配transparent 才是真透明；只设frame:false 会得到一个黑框。
+ *   2. `resizable: false` + 固定尺寸 —— 面板不该被拖成别的形状，
+ *      波纹的构图是定死的。
+ *   3. **不默认置顶**。置顶窗口会盖住所有东西，包括你正在打的字。
+ *      做成「点托盘才置顶，几秒后自动降级」的临时置顶（flashOnTop）。
+ */
+function createJarvisWindow() {
+  if (jarvis && !jarvis.isDestroyed()) return jarvis;
+
+  jarvis = new BrowserWindow({
+    width: JARVIS_W,
+    height: JARVIS_H,
+    show: false,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    resizable: false,
+    maximizable: false,
+    minimizable: false,
+    skipTaskbar: true,
+    alwaysOnTop: false,
+    hasShadow: false,
+    icon: path.join(__dirname, 'assets', 'icon.png'),
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  });
+
+  // 面板页面自己会拉满窗口并把背景设成透明色；这里只保证不弹外部链接
+  jarvis.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  // 点面板空白处穿透到下面的窗口（贾维斯不该挡住你干活）
+  jarvis.setIgnoreMouseEvents(true, { forward: true });
+
+  jarvis.on('closed', () => { jarvis = null; updateTray(); });
+
+  return jarvis;
+}
+
+function loadJarvis() {
+  if (!jarvis || jarvis.isDestroyed()) createJarvisWindow();
+  const target = kernelUrl
+    ? kernelUrl + '/jarvis.html'
+    : 'file://' + path.join(__dirname, 'pages', 'nokernel.html');
+  jarvis.loadURL(target).catch((e) => log('[jarvis] 加载失败', String(e)));
+  return jarvis;
+}
+
+/** 显示面板并短暂置顶——让用户看见它，但别长期压住别的窗口。 */
+function showJarvis(flashMs) {
+  if (!jarvis || jarvis.isDestroyed()) loadJarvis();
+  jarvis.showInactive();          // 不抢当前窗口的焦点
+  jarvis.setAlwaysOnTop(true, 'screen-saver');
+  jarvis.moveTop();
+  setTimeout(() => {
+    if (jarvis && !jarvis.isDestroyed()) jarvis.setAlwaysOnTop(false);
+  }, flashMs || 6000);
+  updateTray();
+}
+
+function toggleJarvis() {
+  if (jarvis && !jarvis.isDestroyed() && jarvis.isVisible()) {
+    jarvis.hide();
+  } else {
+    showJarvis();
+  }
+  updateTray();
+}
+
 // ---------------------------------------------------------- 托盘
+
+/**
+ * 托盘图标跟随内核/面板状态变化——用户不用点开就知道它在不在。
+ *
+ * 亮/暗两态用**内联 SVG 现生成**，不额外放二进制资源：
+ * 多一个 png 就多一份要维护、容易忘的资产，而这里要的只是"一个点
+ * 变亮"。SVG 只有几百字节，Electron 的 nativeImage 也能直接吃
+ * data URL。SVG 不可用时退回原png（见下面的 catch）。
+ */
+function updateTray() {
+  if (!tray || tray.isDestroyed()) return;
+  const panelOn = !!(jarvis && !jarvis.isDestroyed() && jarvis.isVisible());
+  const basePath = path.join(__dirname, 'assets', 'tray.png');
+  try {
+    const dot = panelOn ? '#39ffb0' : '#4a5a68';
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32">`
+      + `<circle cx="16" cy="16" r="13" fill="none" stroke="${dot}" stroke-width="2"/>`
+      + `<circle cx="16" cy="16" r="6" fill="${dot}"/></svg>`;
+    const img = nativeImage.createFromDataURL(
+      'data:image/svg+xml;base64,' + Buffer.from(svg).toString('base64'));
+    tray.setImage(img.isEmpty() ? nativeImage.createFromPath(basePath) : img);
+  } catch (_) {
+    try { tray.setImage(nativeImage.createFromPath(basePath)); } catch (_) {}
+  }
+  tray.setToolTip(panelOn
+    ? '黑武士 · 贾维斯面板已打开（点此隐藏）'
+    : '黑武士 · 点击唤起贾维斯面板');
+}
+
+function buildTrayMenu() {
+  return Menu.buildFromTemplate([
+    { label: '贾维斯面板', click: () => toggleJarvis() },
+    { label: '主界面', click: () => { if (win) { win.show(); win.focus(); } } },
+    { type: 'separator' },
+    { label: '重启内核', click: async () => {
+        killKernel();
+        await new Promise(r => setTimeout(r, 1200));
+        await startKernel();
+        if (win) win.loadURL(kernelUrl);
+        if (jarvis && !jarvis.isDestroyed()) loadJarvis();
+      } },
+    { label: '开机自启（登录后自动运行）',
+      type: 'checkbox',
+      checked: app.getLoginItemSettings().openAtLogin,
+      click: (item) => setAutoLaunch(item.checked) },
+    { label: '打开数据目录', click: () => {
+        const cfg = path.join(app.getPath('appData'), 'BlackWarrior');
+        if (fs.existsSync(cfg)) shell.openPath(cfg);
+      } },
+    { type: 'separator' },
+    { label: '退出', click: () => { quitting = true; app.quit(); } }
+  ]);
+}
+
+/**
+ * 开机自启由 **Electron 自己**注册（app.setLoginItemSettings），
+ * 而不是内核去写 .vbs。
+ *
+ * 之前内核的 setup_autostart 写vbs 拉起的是 `python -m blackwarrior serve`
+ * ——只起内核，**没有界面**。开机后用户看到的是"服务在跑但什么都没有"，
+ * 还得自己找 exe 打开。桌面 Agent 的开机自启必须把**壳**一起拉起来。
+ */
+function setAutoLaunch(enable) {
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: !!enable,
+      // 开发态（electron .）注册的是 electron.exe，必须带上项目路径参数，
+      // 否则开机后 Electron 启动器找不到 main.cjs 直接退出。
+      args: IS_DEV ? [PROJECT_ROOT] : []
+    });
+    log('[autostart] 已' + (enable ? '开启' : '关闭'));
+    return true;
+  } catch (e) {
+    log('[autostart] 设置失败', String(e));
+    return false;
+  }
+}
 
 function createTray() {
   try {
     const icon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'tray.png'));
     tray = new Tray(icon);
-    const menu = Menu.buildFromTemplate([
-      { label: '打开黑武士', click: () => { if (win) { win.show(); win.focus(); } } },
-      { type: 'separator' },
-      { label: '重启内核', click: async () => {
-          killKernel();
-          await new Promise(r => setTimeout(r, 1200));
-          await startKernel();
-          if (win) win.loadURL(kernelUrl);
-        } },
-      { label: '打开数据目录', click: () => {
-          const cfg = path.join(app.getPath('appData'), 'BlackWarrior');
-          if (fs.existsSync(cfg)) shell.openPath(cfg);
-        } },
-      { type: 'separator' },
-      { label: '退出', click: () => { quitting = true; app.quit(); } }
-    ]);
-    tray.setToolTip('黑武士 BlackWarrior');
-    tray.setContextMenu(menu);
+    tray.setContextMenu(buildTrayMenu());
+    tray.on('click', () => toggleJarvis());
     tray.on('double-click', () => { if (win) { win.show(); win.focus(); } });
     app.trayAvailable = true;
+    updateTray();
   } catch (e) {
     log('[tray] 创建失败', String(e));
     app.trayAvailable = false;
@@ -294,8 +447,25 @@ ipcMain.handle('bw:status', () => ({
   kernelUrl, kernelPort, running: !!kernel,
   log: bootLog.slice(-120),
   platform: process.platform,
-  version: app.getVersion()
+  version: app.getVersion(),
+  jarvisOpen: !!(jarvis && !jarvis.isDestroyed() && jarvis.isVisible()),
+  autoLaunch: (() => { try { return app.getLoginItemSettings().openAtLogin; } catch (_) { return false; } })()
 }));
+
+// —— 面板控制（渲染进程只能调这几个白名单方法）——
+ipcMain.handle('bw:jarvis-show', () => {
+  if (quitting) return { ok: false, reason: '正在退出' };
+  try { showJarvis(8000); return { ok: true, kernelUrl }; }
+  catch (e) { return { ok: false, reason: String(e && e.message || e) }; }
+});
+ipcMain.handle('bw:jarvis-hide', () => {
+  if (jarvis && !jarvis.isDestroyed()) jarvis.hide();
+  updateTray();
+  return { ok: true };
+});
+ipcMain.handle('bw:jarvis-toggle', () => { toggleJarvis(); return { ok: true }; });
+ipcMain.handle('bw:set-auto-launch', (_e, enable) => ({ ok: setAutoLaunch(!!enable) }));
+
 ipcMain.handle('bw:open-external', (_e, url) => {
   if (/^https?:\/\//.test(String(url))) shell.openExternal(String(url));
 });
@@ -313,16 +483,39 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); }
+    // 已经在跑就把面板亮出来——开机自启后用户双击图标，第一反应
+    // 就是"唤起来看看"，而不是只看主界面。
+    showJarvis(8000);
+    if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
   });
 
   app.whenReady().then(async () => {
+    // ★麦克风权限：Electron 默认**拒绝** media 权限，而且失败得很安静——
+    // getUserMedia 直接 reject，页面只表现为"点了开启麦克风没反应"，
+    // 面板永远停在待命。这个坑不显式处理一定会遇到。
+    const ses = require('electron').session;
+    ses.defaultSession.setPermissionRequestHandler((wc, permission, cb) => {
+      // 只放行麦克风；其它一律拒绝（不需要摄像头/通知/定位）
+      cb(permission === 'media' || permission === 'audioCapture');
+    });
+    ses.defaultSession.setPermissionCheckHandler((wc, permission) => {
+      return permission === 'media' || permission === 'audioCapture';
+    });
+
     createWindow();
     createTray();
+
+    // 开机自启触发的启动：只起托盘+面板，不弹主界面窗口。
+    // 理由是开机时用户多半在做别的事，弹一个 1280x800 抢焦点很粗暴。
+    const silent = process.argv.includes('--autostart');
+    if (!silent) { win.show(); }
 
     try {
       await startKernel();
       loadApp();
+      // 面板在内核就绪后再建：它要加载 kernelUrl + /jarvis.html
+      loadJarvis();
+      if (!silent) showJarvis(6000);
     } catch (err) {
       log('[boot] 失败:', String(err && err.message || err));
       dialog.showMessageBox(win, {
@@ -345,6 +538,6 @@ if (!app.requestSingleInstanceLock()) {
   app.on('before-quit', () => { quitting = true; });
   app.on('will-quit', () => { killKernel(); });
   app.on('window-all-closed', (e) => {
-    // 常驻：不退出，交给托盘
+    // 常驻：不退出，交给托盘。面板窗口（skipTaskbar）不算"用户要关的窗口"。
   });
 }

@@ -17,6 +17,14 @@ contextBridge.exposeInMainWorld('bwDesktop', {
   revealData: () => ipcRenderer.invoke('bw:reveal-data'),
   relaunch: () => ipcRenderer.invoke('bw:relaunch'),
 
+  // —— 贾维斯面板控制（v0.8.7）——
+  // 页面里要判断"我是在桌面壳里还是普通浏览器里"：
+  // 浏览器里没有 bwDesktop，就退回点击麦克风的手动模式。
+  jarvisShow: () => ipcRenderer.invoke('bw:jarvis-show'),
+  jarvisHide: () => ipcRenderer.invoke('bw:jarvis-hide'),
+  jarvisToggle: () => ipcRenderer.invoke('bw:jarvis-toggle'),
+  setAutoLaunch: (enable) => ipcRenderer.invoke('bw:set-auto-launch', !!enable),
+
   // 内核异常退出通知
   onKernelGone: (fn) => {
     if (typeof fn !== 'function') return;

@@ -463,6 +463,17 @@ def selftest() -> bool:
     check(not _missing_j,
           f"★JarvisRuntime 方法齐全（缺: {_missing_j or '无'}）")
 
+    # 19. 开机自启必须指向**桌面壳**，而不是裸内核（v0.8.7）
+    # 自检里原来那条只断言"脚本内容正确"，但脚本内容正确 ≠ 拉起的是有界面的东西。
+    # 之前 VBS 里写的是 `python -m blackwarrior serve`：开机后只有服务在跑，
+    # 用户看到的是"什么都没发生"。现在 launch_command 优先找 Electron。
+    from .tools.builtin.system import _launch_command as _lc
+    _cmd = _lc()
+    _kind = str(_cmd.get("kind") or "")
+    check(_kind in ("electron", "electron-dev", "packaged", "serve-only"),
+          f"自启命令类型可识别（{_kind}）")
+    check(bool(_cmd.get("exe")), "自启命令有可执行路径")
+
     print("-" * 58)
     print("自检结果：" + ("通过" if ok else "失败"))
     return ok

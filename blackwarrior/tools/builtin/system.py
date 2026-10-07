@@ -32,11 +32,52 @@ def _autostart_path() -> str:
     return os.path.join(_startup_dir(), AUTOSTART_NAME)
 
 
-def _launch_command() -> Dict[str, Any]:
-    """算出"启动黑武士服务"的命令。
+def _electron_exe(repo_root: str) -> str:
+    """找Electron 桌面壳的可执行入口（找不到返回空串）。
 
-    打包态直接跑 exe；开发态跑 ``python -m blackwarrior serve`` 并锁定
-    工作目录到仓库根，否则 subprocess 找不到包。
+    优先级：
+      1. ``$BLACKWARRIOR_ELECTRON`` 显式指定
+      2. 打包安装后的 ``BlackWarrior.exe``（开始菜单/常见安装目录）
+      3. 开发态的 ``electron/node_modules/electron/dist/electron.exe``
+    """
+    import glob
+
+    env = os.environ.get("BLACKWARRIOR_ELECTRON", "")
+    if env and os.path.exists(env):
+        return env
+
+    # 安装版：exe 与内核同级或就在它旁边
+    here = os.path.dirname(os.path.abspath(__file__))
+    for base in (repo_root, os.path.dirname(repo_root)):
+        for pat in ("BlackWarrior.exe", "dist/BlackWarrior.exe",
+                    "electron/release/BlackWarrior.exe"):
+            p = os.path.join(base, pat.replace("/", os.sep))
+            if os.path.exists(p):
+                return p
+    # 开发态：本地 electron 二进制
+    dev = os.path.join(repo_root, "electron", "node_modules", "electron",
+                       "dist", "electron.exe")
+    if os.path.exists(dev):
+        return dev
+    # 兜底：扫一眼 dist 目录里有没有打好包的 exe
+    for hit in glob.glob(os.path.join(repo_root, "**", "BlackWarrior.exe"),
+                         recursive=True):
+        return hit
+    _ = here
+    return ""
+
+
+def _launch_command() -> Dict[str, Any]:
+    """算出"启动黑武士"的命令。
+
+    ★v0.8.7 改动：**优先拉起Electron 桌面壳，而不是裸的 serve**。
+    之前这里只生成 ``python -m blackwarrior serve``，于是"开机自启"=
+    开机后有个后台服务在跑，但**没有任何界面**——用户还得自己找 exe
+    打开。对"住进电脑里"的桌面 Agent 来说这是半成品。
+
+    Electron 壳会自己再拉起内核（它有单实例锁和端口探测），所以这里
+    只管把壳叫起来即可。找不到壳时退回裸 serve，并如实标注 kind，
+    让 `autostart_status` 能说清"自启的到底是什么"。
     """
     import sys
 
@@ -46,8 +87,17 @@ def _launch_command() -> Dict[str, Any]:
                 "kind": "packaged"}
     repo = os.path.dirname(os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
+
+    # 开发态优先起 Electron 壳（带上项目路径，electron.exe 才知道找哪个 main.cjs）
+    exe = _electron_exe(repo)
+    if exe and os.path.basename(exe).lower().startswith("electron"):
+        return {"exe": exe, "args": [repo], "cwd": repo,
+                "kind": "electron-dev"}
+    if exe:
+        return {"exe": exe, "args": [], "cwd": "", "kind": "electron"}
+
     return {"exe": sys.executable, "args": ["-m", "blackwarrior", "serve"],
-            "cwd": repo, "kind": "source"}
+            "cwd": repo, "kind": "serve-only"}
 
 
 def _build_vbs() -> str:
@@ -264,9 +314,11 @@ def register(reg: Any, ctx: Any) -> None:
             return {"ok": False, "error": f"删除启动脚本失败：{ex}"}
 
     def autostart_status() -> Dict[str, Any]:
-        """查看开机自启状态与当前位置。"""
+        """查看开机自启状态、位置，以及**自启的到底是什么**。"""
         path = _autostart_path()
         exists = os.path.isfile(path)
+        cmd = _launch_command()
+        kind = str(cmd.get("kind") or "")
         return {
             "ok": True,
             "supported": os.name == "nt",
@@ -274,6 +326,17 @@ def register(reg: Any, ctx: Any) -> None:
             "script": path if exists else "",
             "startup_dir": _startup_dir(),
             "system": platform.system(),
+            # ★说清楚自启的是"桌面壳"还是"只有内核"。
+            # 之前只回 exists，开了自启却没界面时用户完全看不出问题在哪。
+            "launch_kind": kind,
+            "launch_exe": cmd.get("exe", ""),
+            "launch_ui": kind.startswith("electron") or kind == "packaged",
+            "note": {
+                "electron": "自启桌面壳（含托盘与贾维斯面板）",
+                "electron-dev": "自启开发态桌面壳（electron .）",
+                "packaged": "自启打包后的桌面程序",
+                "serve-only": "★只自启内核服务，没有界面（未找到 Electron 壳）",
+            }.get(kind, kind),
         }
 
     reg.register("set_reminder", set_reminder, risk=RISK_CAUTION,

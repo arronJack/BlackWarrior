@@ -16,6 +16,19 @@
     --speak:#39ffb0; --warn:#ffb020; --danger:#ff4d5e;
     --glow:0 0 18px currentColor;
   }
+  /* 桌面壳里（Electron 无边框透明窗）用真透明，纯浏览器里退回深底。
+     检测在脚本末尾：拿到 bwDesktop 就加 .shell 类。 */
+  html.shell, html.shell body { background:transparent !important; }
+  html.shell body { padding:14px; }
+  html.shell #stage, html.shell #say, html.shell #bar {
+    background:rgba(4,7,13,.82);
+    border:1px solid rgba(120,200,255,.10);
+    border-radius:18px;
+    backdrop-filter:blur(14px);
+  }
+  html.shell #stage { height:300px; }
+  html.shell canvas { height:300px; }
+
   * { box-sizing:border-box; margin:0; padding:0; }
   html,body { height:100%; overflow:hidden; background:var(--bg); }
   body {
@@ -464,6 +477,35 @@ $('mute').onclick = () => { say('（已打断）'); setState(listeningOn ? 'wait
 
 setState('idle');
 setHint('点「开启麦克风」开始');
+
+/* ---------------- 桌面壳适配 ---------------- */
+// 在 Electron 无边框置顶小窗里：透明底、去掉"点开浏览器"的按钮语，
+// 并给用户一条"关掉面板"的路径（点托盘图标也行，但窗口里要有）。
+const shell = global.bwDesktop || null;
+if (shell && shell.isDesktop) {
+  document.documentElement.classList.add('shell');
+  const bar = document.getElementById('bar');
+  const mk = (label, title, fn) => {
+    const b = document.createElement('button');
+    b.textContent = label; b.title = title || label;
+    b.onclick = fn;
+    return b;
+  };
+  bar.insertBefore(mk('✕', '收起面板（托盘图标可再唤出）', () => {
+    try { shell.jarvisHide(); } catch (_) {}
+  }), bar.firstChild);
+  bar.insertBefore(mk('🎛', '开机自启', (e) => {
+    const on = e.target.dataset.on === '1';
+    const next = !on;
+    try {
+      shell.setAutoLaunch(next).then((r) => {
+        if (r && r.ok) { e.target.dataset.on = next ? '1' : '0';
+                         e.target.style.opacity = next ? '1' : '.55'; }
+      });
+    } catch (_) {}
+  }), bar.children[1]);
+  setHint('说「黑武士」唤醒');
+}
 </script>
 </body>
 </html>
