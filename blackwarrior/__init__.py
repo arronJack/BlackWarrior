@@ -421,6 +421,15 @@ def selftest() -> bool:
 
     check(_ct("web_search")[0] == "low" and _ct("web_read")[0] == "low",
           "只读工具归为低危（免提不啰嗦）")
+    # ★第一版用 substring 匹配，把这些只读工具全误判成高危了：
+    #   list_tasks / list_reminders / autostart_status / find_command
+    # 免提模式里每问一句要点一次确认，等于把功能废掉。
+    check(all(_ct(n)[0] == "low" for n in
+              ("list_tasks", "list_reminders", "autostart_status",
+               "find_command", "task_current", "which", "open_url")),
+          "★查询类工具不再被误判高危（免提不会被点按淹没）")
+    check(_ct("open_app")[0] == "high" and _ct("setup_autostart")[0] == "high",
+          "启动应用/改开机行为仍需确认")
     check(_ct("delete_file")[0] == "high",
           "★删除归为高危（必须人点确认）")
     check(_ct("run_shell")[0] == "high" and _ct("write_file")[0] == "high",

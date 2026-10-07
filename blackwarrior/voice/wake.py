@@ -241,60 +241,82 @@ LOW_RISK = "low"
 #: 唯一凭据。
 HIGH_RISK = "high"
 
-#: 高危动作特征。命中即升级为需确认。
-_HIGH_RISK_RULES: List[tuple] = [
-    # (工具名子串, 理由)
-    ("delete", "删除文件不可逆"),
-    ("remove", "删除操作不可逆"),
+#: 高危**精确名单**（需人工点击确认）。
+#:
+#: 为什么用精确名单而不是"关键词包含"：第一版用 substring 匹配，
+#: 结果把``list_tasks`` / ``list_reminders`` / ``autostart_status`` /
+#: ``find_command`` 全判成高危——它们都是只读的。免提模式里每问一句
+#: 就要点一次确认，用两次就没人用了。
+#:
+#: 名单是照着工具注册表里自带的 risk 字段逐个定的：
+#:   danger 档 → 全要确认（delete_file / run_command / which）
+#:   caution 档里**会改变系统或对外**的 → 要确认
+#:   其余（safe 档、纯查询类）→ 语音直接放行
+_HIGH_RISK_EXACT = {
+    # —— danger 档：不可逆或直接执行外部程序 ——
+    "delete_file": "删除文件不可逆",
+    "run_command": "执行 Shell 命令",
+    # —— caution 档里会改状态 / 对外 / 花钱的 ——
+    "write_file": "写入会覆盖已有内容",
+    "grant_access": "扩大权限范围",
+    "revoke_access": "变更权限范围",
+    "setup_autostart": "会改开机行为",
+    "cancel_autostart": "会改开机行为",
+    "open_app": "会在你电脑上启动应用",
+    "set_reminder": "会产生外部提醒",
+    "memory_write": "会写入长期记忆",
+    "memory_consolidate": "会改写已有记忆",
+}
+
+#: 未知工具名的兜底特征。只在**不在**精确名单里时生效，
+#: 用来防"以后新增了危险工具却忘了登记"。
+_HIGH_RISK_PATTERNS = (
+    ("delete", "删除操作不可逆"),
     ("rmdir", "删除目录不可逆"),
     ("rename", "重命名会打断你正在用的东西"),
-    ("move", "移动文件可能覆盖"),
-    ("write", "写入会覆盖已有内容"),
+    ("exec", "执行外部程序"),
     ("shell", "执行系统命令"),
-    ("exec", "执行系统命令"),
-    ("command", "执行系统命令"),
-    ("run", "执行外部程序"),
-    ("push", "会向外部服务发消息"),
-    ("send", "会向外部发送内容"),
-    ("grant", "扩大权限范围"),
-    ("revoke", "变更权限范围"),
-    ("update", "会改配置"),
-    ("autostart", "会改开机行为"),
-    ("relay", "会向外部服务转发"),
-    ("reminder", "会产生外部提醒"),
-    ("task", "会改动待办"),
-]
-
-#: 明确低危的只读工具，优先级高于上面的规则（"list_tasks" 里含"task"
-#: 但它只是读）。这里给一份白名单，避免规则误伤。
-_LOW_RISK_TOOLS = (
-    "list_tools", "list_workspaces", "get_time", "get_weather",
-    "web_search", "web_read", "memory_recall", "memory_search",
-    "recall", "search_memories", "get_task", "list_task", "get_reminder",
-    "list_reminder", "read_file", "list_dir", "find_file", "stat_path",
-    "sys_info", "status", "whoami", "media_scan",
+    ("uninstall", "卸载会改变系统"),
+    ("format", "会格式化磁盘"),
+    ("shutdown", "会关机/重启"),
+    ("pay", "涉及花钱"),
+    ("transfer", "涉及资金转账"),
 )
+
+#: 明确低危的查询类工具（含复数形式，第一版漏了这些导致误判）。
+_LOW_RISK_EXACT = {
+    "list_tools", "find_tool", "list_workspaces", "get_time", "get_status",
+    "get_panel", "get_profile", "web_search", "web_read", "web_headlines",
+    "open_url", "read_file", "list_dir", "file_info", "text_stats",
+    "which", "find_command", "check_port", "environment", "system_probe",
+    "dev_env", "diagnose_network", "list_software", "list_reminders",
+    "list_tasks", "task_current", "autostart_status", "memory_list",
+    "memory_recall", "memory_stats", "memory_audit", "list_clues",
+    "link_clue", "list_media", "media_stats", "probe_media", "scan_media",
+    "add_media_root", "remove_media_root", "list_prefetch", "add_prefetch",
+    "push_background", "remember_feedback", "set_profile", "set_tick_interval",
+}
 
 
 def classify_tool(name: str) -> tuple:
     """给工具定级，返回 ``(等级, 理由)``。
 
-    判定顺序：白名单优先 → 高危特征 → 默认低危。
-    默认低危是刻意的：绝大多数工具是只读的，让**每个工具都要确认**
-    会把免提交互变成点按地狱，用几次就没人用了。
-    真正危险的那几类由高危规则兜住。
+    判定顺序：低危白名单 → 高危精确名单 → 高危特征 → MCP → 默认低危。
+    默认低危是刻意的：绝大多数工具是只读的，让每个都要点确认会把
+    免提变成点按地狱。真正危险的那十来个由名单兜住，新来的外部工具
+    （MCP）一律按高危——外部服务器今天返回只读、明天可能改。
     """
     n = (name or "").strip()
     low = n.lower()
-    if low in _LOW_RISK_TOOLS:
-        return (LOW_RISK, "只读操作")
-    for frag, why in _HIGH_RISK_RULES:
-        if frag in low:
-            return (HIGH_RISK, why)
-    # MCP 工具：来源是外部服务器，参数不可预判，一律按高危。
-    # 这是有意的保守取值——外部服务器今天返回只读、明天可能改。
+    if low in _LOW_RISK_EXACT:
+        return (LOW_RISK, "只读查询")
+    if low in _HIGH_RISK_EXACT:
+        return (HIGH_RISK, _HIGH_RISK_EXACT[low])
     if low.startswith("mcp__"):
         return (HIGH_RISK, "来自外部 MCP 服务器，参数不可预判")
+    for frag, why in _HIGH_RISK_PATTERNS:
+        if frag in low:
+            return (HIGH_RISK, why)
     return (LOW_RISK, "只读操作")
 
 
