@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from typing import Any, Dict, List, Optional
 
@@ -301,16 +302,68 @@ class WarriorCore:
             res = self.gateway.complete(msgs, tools=tools, temperature=0.3)
         except Exception as ex:
             return {"text": "", "calls": [], "error": str(ex)}
-        calls = []
-        for c in (res.get("tool_calls") or []):
-            name = str(c.get("name") or "")
-            args = c.get("args") or c.get("arguments") or {}
-            if name:
-                calls.append({"name": name, "args": args, "id": c.get("id", "")})
+        calls = _normalize_tool_calls(res.get("tool_calls"))
+        text_out = str(res.get("content") or "")
+
+        # ★空回复兜底：本地小模型（qwen2.5:7b 实测）带工具时有一定概率
+        # 既不给工具也不给文字（content='' 且 finish_reason=stop）。
+        # 这种情况必须**再问一次不带工具**，否则用户看到的是一片空白——
+        # 而"它啥也没说"和"它不想说"对用户是同一件事，无法排查。
+        if not calls and not text_out.strip():
+            emit("jarvis_plan_empty", {"text": text[:200]})
+            try:
+                res2 = self.gateway.complete(
+                    msgs[:1] + [{"role": "user", "content": text}],
+                    tools=None, temperature=0.4)
+                text_out = str(res2.get("content") or "")
+                # 第二次也没有内容 → 如实说没有，不编
+                if not text_out.strip():
+                    text_out = ""
+            except Exception as ex:
+                emit("jarvis_plan_retry_failed", {"error": str(ex)[:200]})
+
         emit("jarvis_plan_end", {"n_calls": len(calls),
                                  "calls": [c["name"] for c in calls]})
-        return {"text": res.get("content", ""), "calls": calls,
+        return {"text": text_out, "calls": calls,
                 "error": res.get("error", "")}
+
+
+    @staticmethod
+    def _normalize_tool_calls(raw: Any) -> list:
+        """把网关返回的 tool_calls 统一成 ``{id, name, args}``。
+
+        ★这里踩过一个很隐蔽的坑：``LLMGateway.complete()`` 返回的是
+        **OpenAI 原始格式**::
+
+            {"id": "call_x", "type": "function",
+             "function": {"name": "web_search", "arguments": "{\\"query\\":\\"...\\"}"}}
+
+        名字嵌在 ``function`` 里，而且 ``arguments`` 是**JSON 字符串**不是 dict。
+        按扁平的 ``c["name"]`` / ``c["args"]`` 解析会把每一个调用都静默丢掉
+        ——症状是"模型明明调了工具，贾维斯却说没事可做"。
+        """
+        out = []
+        for c in (raw or []):
+            if not isinstance(c, dict):
+                continue
+            fn = c.get("function") if isinstance(c.get("function"), dict) else {}
+            name = str(c.get("name") or fn.get("name") or "").strip()
+            if not name:
+                continue
+            args = c.get("args")
+            if args is None:
+                args = c.get("arguments")
+            if args is None:
+                args = fn.get("arguments")
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args) if args.strip() else {}
+                except Exception:
+                    args = {"_raw": args[:500]}
+            if not isinstance(args, dict):
+                args = {}
+            out.append({"id": str(c.get("id") or ""), "name": name, "args": args})
+        return out
 
     def execute_calls(self, calls: List[Dict[str, Any]]) -> Dict[str, Any]:
         """执行一批**已获授权**的工具调用，返回 ``{summary, results}``。

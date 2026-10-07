@@ -206,23 +206,29 @@ class JarvisRuntime:
 
         # ---- 3b. 全部低危 → 直接执行 ----
         reply = ""
+        done: List[str] = []
         if allowed:
             try:
                 res = self.core.execute_calls(allowed)
+                done = [str(c.get("name") or "") for c in allowed]
                 reply = (res.get("summary") if isinstance(res, dict) else "") or ""
             except Exception as ex:
                 reply = f"执行的时候出错了：{ex}"
+                done = []
         if not reply:
             reply = plan.get("text") or ""
         if not reply.strip():
-            reply = "这件事我办了，但没什么要汇报的。"
+            # ★不许说"我办了"——此刻可能一个工具都没执行成功。
+            # 编一句好听的比回一句难听的危险得多：用户会以为事办好了。
+            reply = ("这件事我没能动手，也没有拿到能回复你的内容。"
+                     "可能是本地模型这次没给出明确指令，你可以换个说法再问我一次。")
 
         self.stats["asked"] += 1
         self.set_state(VoiceState.SPEAKING)
         audio = self._speak(reply)
         self.set_state(VoiceState.WAITING)
         return {"kind": "ask", "reply": reply, "audio": audio,
-                "asr_text": heard, "executed": [c.get("name") for c in allowed]}
+                "asr_text": heard, "executed": done}
 
     # -------------------------------------------------- 人工确认
 
