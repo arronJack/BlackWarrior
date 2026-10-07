@@ -365,6 +365,40 @@ class WarriorCore:
             out.append({"id": str(c.get("id") or ""), "name": name, "args": args})
         return out
 
+    def summarize(self, command: str, digest: str) -> str:
+        """把执行结果说成人话（免提用）。
+
+        为什么需要这一步：工具返回的是结构化结果，直接拿去 TTS 会念出
+        一串 JSON——语音里那是最难听的失败。走一次**不带工具**的生成，
+        只让它把摘要讲成一句话。
+        """
+        from threading import Event
+
+        sys_p = ""
+        ca = getattr(self.turn_runner, "assembler", None)
+        if ca is not None and hasattr(ca, "build"):
+            try:
+                b = ca.build(command)
+                sys_p = (b.get("system_prompt", "") if isinstance(b, dict)
+                         else "") or ""
+            except Exception:
+                sys_p = ""
+        msgs = [
+            {"role": "system", "content": sys_p or
+             "你是黑武士，一个住在这台电脑里的助手。回答要口语、简短。"},
+            {"role": "user", "content":
+             f"我让你做的是：{command}\n"
+             f"工具执行结果（摘要）：{digest}\n\n"
+             "请用一句自然的中话告诉我结果，不要复述 JSON，不要罗列字段，"
+             "最多 40 字。"},
+        ]
+        try:
+            res = self.gateway.complete(msgs, tools=None, temperature=0.4)
+        except Exception as ex:
+            emit("jarvis_summarize_failed", {"error": str(ex)[:200]})
+            return ""
+        return str(res.get("content") or "").strip()
+
     def execute_calls(self, calls: List[Dict[str, Any]]) -> Dict[str, Any]:
         """执行一批**已获授权**的工具调用，返回 ``{summary, results}``。
 

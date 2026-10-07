@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import threading
@@ -207,21 +208,26 @@ class JarvisRuntime:
         # ---- 3b. 全部低危 → 直接执行 ----
         reply = ""
         done: List[str] = []
+        digest = ""
         if allowed:
             try:
                 res = self.core.execute_calls(allowed)
                 done = [str(c.get("name") or "") for c in allowed]
-                reply = (res.get("summary") if isinstance(res, dict) else "") or ""
+                digest = _digest_results(allowed, res)
+                reply = ""
             except Exception as ex:
                 reply = f"执行的时候出错了：{ex}"
                 done = []
-        if not reply:
-            reply = plan.get("text") or ""
+        if not reply and digest:
+            # ★绝不能把工具返回的原始 JSON 念给用户听。语音里读
+            # `{"ok": true, "results": [{"title": ...` 荒谬且难懂。
+            # 先让模型把「人话摘要」组织出来；模型不听话就用我们自己
+            # 生成的摘要（本身已经是可读的），不让用户听到 JSON。
+            reply = self._say_naturally(command, digest)
         if not reply.strip():
             # ★不许说"我办了"——此刻可能一个工具都没执行成功。
-            # 编一句好听的比回一句难听的危险得多：用户会以为事办好了。
             reply = ("这件事我没能动手，也没有拿到能回复你的内容。"
-                     "可能是本地模型这次没给出明确指令，你可以换个说法再问我一次。")
+                     "可以换个说法再问我一次。")
 
         self.stats["asked"] += 1
         self.set_state(VoiceState.SPEAKING)
@@ -229,6 +235,63 @@ class JarvisRuntime:
         self.set_state(VoiceState.WAITING)
         return {"kind": "ask", "reply": reply, "audio": audio,
                 "asr_text": heard, "executed": done}
+
+    def _say_naturally(self, command: str, digest: str) -> str:
+        """把执行结果说成人话。失败就退回 digest（已是可读摘要）。"""
+        try:
+            text = self.core.summarize(command, digest)
+        except Exception:
+            return digest
+        text = (text or "").strip()
+        if not text:
+            return digest
+        # 语音不适合长篇大论：读超过 120 字会被截得很难听
+        return text if len(text) <= 120 else text[:118] + "…"
+
+
+def _digest_results(calls: List[Dict[str, Any]], res: Any) -> str:
+    """把工具执行结果压成一句**人类可读**的摘要。
+
+    刻意不返回原始 JSON：这些内容是要被 TTS 念出来的。
+    对不认识的结果形状，退回「做了什么 + 返回了多少内容」，
+    宁可平淡也不能念一串 JSON。
+    """
+    if not isinstance(res, dict):
+        return "已经执行完毕。"
+    results = res.get("results") or []
+    names = [str(c.get("name") or "") for c in (calls or [])]
+    label = "、".join(names) if names else "工具"
+    lines: List[str] = []
+    for item in results:
+        try:
+            d = json.loads(item) if isinstance(item, str) else item
+        except Exception:
+            d = None
+        if not isinstance(d, dict):
+            lines.append(str(item)[:120])
+            continue
+        if d.get("error"):
+            lines.append(f"{label} 失败：{str(d['error'])[:100]}")
+            continue
+        rs = d.get("results")
+        if isinstance(rs, list) and rs:
+            titles = []
+            for r in rs[:5]:
+                if isinstance(r, dict):
+                    t = str(r.get("title") or r.get("name") or "").strip()
+                    if t:
+                        titles.append(t[:40])
+            joined = "；".join(titles)
+            lines.append(f"{label} 找到 {len(rs)} 条结果：{joined}" if titles
+                         else f"{label} 返回 {len(rs)} 条结果。")
+        elif d.get("text"):
+            lines.append(f"{label}：{str(d['text'])[:110]}")
+        elif d.get("ok") is False:
+            lines.append(f"{label} 没有成功。")
+        else:
+            body = json.dumps(d, ensure_ascii=False)
+            lines.append(f"{label} 已执行，返回 {len(body)} 字节内容。")
+    return " ".join(lines)[:400] if lines else f"{label} 已执行。"
 
     # -------------------------------------------------- 人工确认
 
