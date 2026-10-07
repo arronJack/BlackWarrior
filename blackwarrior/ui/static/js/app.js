@@ -182,7 +182,7 @@
       case 'tool_result':
         setToolPill(p.name, p.ok === false ? 'err' : 'ok');
         pushFeed((p.ok === false ? '✗ ' : '✓ ') + toolZH(p.name) +
-                 (p.ok === false ? ' 失败' : ' 完成') + '（' +
+                 (p.ok === false ? ' 失败：' + ((p.error || p.reason || '未知原因')) : ' 完成') + '（' +
                  fmt.num((p.duration_ms || 0) / 1000, 2) + ' 秒）',
                  p.ok === false ? 'err' : 'tool');
         break;
@@ -263,7 +263,7 @@
         break;
 
       case 'error':
-        pushFeed('错误：' + (p.message || p.error || ''), 'err');
+        pushFeed('错误：' + (p.message || p.error || '（未知错误）'), 'err');
         break;
 
       case 'activation_required':
@@ -527,7 +527,7 @@
                                  '，好奇心 ' + fmt.num(p.curiosity);
       case 'tool_call': return '▶ 调用：' + toolZH(p.name) + toolArgsBrief(p.name, p.args);
       case 'tool_result': return (p.ok === false ? '✗ ' : '✓ ') + toolZH(p.name) +
-                                 (p.ok === false ? ' 失败' : ' 完成') + '（' +
+                                 (p.ok === false ? ' 失败：' + ((p.error || p.reason || '未知原因')) : ' 完成') + '（' +
                                  fmt.num((p.duration_ms || 0) / 1000, 2) + ' 秒）';
       case 'reply': return '已生成回复（' + String(p.text || '').length + ' 字）';
       case 'reply_delta': return '';  // 流式增量不进事件流，避免刷屏
@@ -536,7 +536,7 @@
                                   (((p && p.gate_passed) === false) ? '被安全层拦下' : '通过门控');
       case 'pasm2_gate': return '安全层｜' + toolZH(p.name) + ' ' +
                                  ((p && p.allowed) ? '放行' : '拒绝：' + ((p && p.reason) || ''));
-      case 'error': return '⚠ 出错：' + (p.message || p.error || '');
+      case 'error': return '⚠ 出错：' + (p.message || p.error || '（未知错误）');
       case 'consolidated': return '记忆已巩固';
       case 'tick_skipped': return '自主思考跳过（当前离线）';
       case 'activation_required': return '需要激活后才能对话';

@@ -169,8 +169,31 @@ def register(reg: Any, ctx: Any) -> None:
             return {"ok": False, "error": f"{type(ex).__name__}: {ex}"}
         return {"ok": True, "items": items, "count": len(items)}
 
+    def list_tools() -> Dict[str, Any]:
+        """列出黑武士当前已加载的全部工具与能力（名称/用途/风险/类目）。
+
+        当用户问「你能做什么 / 有哪些工具 / 让我看看你的能力」时调用本工具，
+        拿到清单后转述给用户即可，不要自己瞎编工具。
+        """
+        try:
+            specs = ctx.tools.specs()
+        except Exception as ex:
+            return {"ok": False, "error": f"{type(ex).__name__}: {ex}"}
+        items = []
+        for s in specs:
+            items.append({
+                "name": str(getattr(s, "name", "")),
+                "description": str(getattr(s, "description", "") or ""),
+                "category": str(getattr(s, "category", "") or ""),
+                "risk": getattr(s, "risk", None),
+            })
+        items.sort(key=lambda x: (x["category"], x["name"]))
+        return {"ok": True, "count": len(items), "tools": items}
+
     reg.register("find_tool", find_tool, risk=RISK_SAFE, category="system",
                  description="按关键词自发现可用工具（工具多时先查再用）")
+    reg.register("list_tools", list_tools, risk=RISK_SAFE, category="system",
+                 description="列出黑武士当前已加载的全部工具与能力（名称/用途/风险/类目）。用户问「你能做什么/有哪些工具/让我看看你的能力」时调用，再把清单告诉用户。")
     reg.register("system_probe", system_probe, risk=RISK_SAFE, category="system",
                  description="探测本机资源（CPU/内存/磁盘/电池/运行时长）")
     reg.register("link_clue", link_clue, risk=RISK_SAFE, category="memory",
