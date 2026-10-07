@@ -304,6 +304,76 @@ def selftest() -> bool:
     from .runtime.channel_adapters import selftest as _adp_self
     check(_adp_self(), "渠道适配器（字节切段/限流/webhook 与企业微信报文）")
 
+    # 11. 飞书 / 企微入站事件（v0.7.0）
+    from .runtime.channel_inbound import selftest as _inb_self
+    check(_inb_self(), "渠道入站（飞书/企微签名、加解密、消息解析）")
+
+    # 12. MCP 客户端（v0.7.0）—— 真起一个 stdio 服务器做往返
+    from .runtime.mcp_client import selftest as _mcp_self
+    check(_mcp_self(), "MCP 客户端（握手/工具注册/调用往返/token 缓存）")
+
+    # 13. 真实世界访问权（v0.7.0）：授权目录能读写，未授权目录仍被拦
+    _saved_roots = list(paths.allowed_roots())
+    _saved_full = paths.full_fs_access()
+    try:
+        paths.set_allowed_roots([str(paths.sandbox_dir())])
+        check(paths.within_sandbox(paths.sandbox_dir() / "x.txt"),
+              "沙箱内路径在允许区")
+        _outside = (tmp_dir := str(paths.data_root().parent)) + "/__nope__/a.txt"
+        check(not paths.within_sandbox(_outside),
+              "未授权目录被拦在允许区外")
+        paths.set_allowed_roots([str(paths.data_root().parent)])
+        check(paths.within_sandbox(_outside),
+              "授权后同一路径立刻放行（★授权真的生效）")
+        paths.set_full_fs_access(True)
+        check(paths.within_sandbox("C:/Windows/System32/drivers/etc/hosts"),
+              "full_fs_access 放开整盘（并已在配置里明示风险）")
+        paths.set_full_fs_access(False)
+        check(not paths.within_sandbox("C:/Windows/System32/drivers/etc/hosts"),
+              "关闭 full_fs_access 后立即收紧")
+        try:
+            paths.resolve_path("C:/Windows/evil.txt")
+            check(False, "越界绝对路径应被 resolve_path 拒绝")
+        except ValueError:
+            check(True, "越界绝对路径被 resolve_path 拒绝（带可读原因）")
+        _rs = paths.resolve_path("notes/a.txt")
+        check(paths.within_sandbox(_rs)
+              and _rs.name == "a.txt" and _rs.parent.name == "notes",
+              f"相对路径仍解析到沙箱内（{_rs}）")
+    finally:
+        paths.set_allowed_roots(_saved_roots)
+        paths.set_full_fs_access(_saved_full)
+
+    # 14. 开机自启（v0.7.0）：只验证脚本能正确生成，不真的写启动文件夹
+    from .tools.builtin import system as _sysmod
+    if os.name == "nt":
+        _vbs = _sysmod._build_vbs()
+        check("WScript.Shell" in _vbs and "blackwarrior" in _vbs,
+              "开机自启脚本内容正确（隐藏窗口启动 serve）")
+    else:
+        print("  ! 非 Windows，跳过开机自启脚本检查")
+
+    # 15. MCP 工具在工具选择里永不被筛掉（v0.7.0 回归守卫）
+    try:
+        from .tools.registry import ToolRegistry as _TR2
+
+        class _FakeCtx:
+            pass
+
+        _fc = _FakeCtx()
+        _fc.tools = _TR2()
+        _fc.tools.register("read_file", lambda path="": "", category="filesystem")
+        _fc.tools.register("get_time", lambda: {}, category="system")
+        _fc.tools.register("mcp__x__y", lambda: {}, category="mcp")
+        _fc.config = cfg
+        from .context.assembler import ContextAssembler as _CA
+
+        _picked = [t["function"]["name"] for t in _CA(_fc)._select_tools("读取文件")]
+        check("mcp__x__y" in _picked,
+              "★关键词命中其它类别时，MCP 工具仍无条件放行")
+    except Exception as ex:
+        check(False, f"MCP 工具放行守卫异常：{type(ex).__name__}: {ex}")
+
     print("-" * 58)
     print("自检结果：" + ("通过" if ok else "失败"))
     return ok

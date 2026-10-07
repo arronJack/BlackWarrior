@@ -260,8 +260,14 @@ def post_settings(core, body, params, handler):
         return 400, {"error": "需要 JSON 对象"}
     # 不接受通过 API 改安全相关项（避免被网页脚本偷偷放大权限）
     blocked = {"allow_lan", "api_token"}
+    # v0.7.0：访问权同样不走通用设置口，必须走 /api/access/grant（显式端点、
+    # 有独立审计），否则任何能打这个接口的脚本都能给自己开整盘读写。
+    blocked |= {"full_fs_access", "allowed_paths"}
     patch = {k: v for k, v in body.items() if k not in blocked}
-    return core.update_config(patch)
+    out = core.update_config(patch)
+    if blocked & set(body.keys()):
+        out["_ignored_security_keys"] = sorted(blocked & set(body.keys()))
+    return out
 
 
 def get_providers(core, body, params, handler):
@@ -438,6 +444,101 @@ def post_channel_inbound(core, body, params, handler):
 def get_channel_list(core, body, params, handler):
     """渠道清单（令牌打码）+ 投递计数。"""
     return core.channels.list_channels()
+
+
+def _make_channel_callback(kind: str):
+    """生成飞书/企微事件回调端点。
+
+    两个端点的共性：**必须读原始字节**验签，还要从 query 取校验参数，
+    所以不能走通用的 ``_read_body`` 解析路径。
+    """
+    import urllib.parse
+
+    from ..runtime import channel_inbound
+
+    def _fn(core, body, params, handler):
+        q = urllib.parse.parse_qs(
+            urllib.parse.urlparse(handler.path).query)
+        raw = b""
+        try:
+            raw = handler.read_raw()
+        except Exception:
+            raw = b""
+        fn = (channel_inbound.handle_feishu if kind == "feishu"
+              else channel_inbound.handle_wecom)
+        res = fn(core.channels, method=str(handler.command), query=q,
+                 body=raw, headers=getattr(handler, "headers", {}))
+        return res.as_route_result()
+
+    return _fn
+
+
+# ============================================================ MCP（v0.7.0）
+
+def get_mcp(core, body, params, handler):
+    """MCP 服务器状态：连了几个、挂了几个工具、每个服务器什么错。"""
+    mgr = getattr(core, "mcp", None)
+    return mgr.status() if mgr else {"enabled": False, "servers": []}
+
+
+def post_mcp_reload(core, body, params, handler):
+    """重连所有 MCP 服务器（改完配置不用重启进程）。"""
+    mgr = getattr(core, "mcp", None)
+    if mgr is None:
+        return 503, {"error": "MCP 管理器未初始化"}
+    if not mgr.enabled():
+        return {"ok": False, "reason": "mcp_enabled=False（配置关闭）"}
+    specs = mgr.specs()
+    if not specs:
+        return {"ok": False, "reason": "mcp_servers 为空，先在配置里加服务器"}
+    mgr.unregister(core.tools)
+    mgr.stop_all()
+    # 同步重连：接口调用方要立刻知道结果，别让"reload 已提交"变成薛定谔状态
+    mgr.start(reg=core.tools, background=False)
+    st = mgr.status()
+    return {"ok": st.get("connected", 0) > 0, **st}
+
+
+def get_mcp_tools(core, body, params, handler):
+    """已挂载的 MCP 工具清单。"""
+    items = [s.as_dict() for s in core.tools.specs() if s.category == "mcp"]
+    return {"count": len(items), "items": items}
+
+
+# ============================================================ 访问权（v0.7.0）
+
+def get_access(core, body, params, handler):
+    """我现在能读写的目录（沙箱 + 授权目录 + full_fs 开关）。"""
+    return {
+        "sandbox": str(core.paths.sandbox_dir()),
+        "allowed_paths": [str(p) for p in core.paths.allowed_roots()],
+        "full_fs_access": bool(core.paths.full_fs_access()),
+    }
+
+
+def post_access_grant(core, body, params, handler):
+    """授权一个真实目录（等价于对话里让黑武士调 grant_access）。"""
+    if not isinstance(body, dict) or not body.get("path"):
+        return 400, {"error": "缺少 path"}
+    path = str(body["path"])
+    roots = list(core.config.get("allowed_paths", []) or [])
+    if path in roots:
+        return {"ok": True, "path": path, "already": True}
+    roots.append(path)
+    core.update_config({"allowed_paths": roots})
+    return {"ok": True, "path": path, **get_access(core, None, None, None)}
+
+
+def post_access_revoke(core, body, params, handler):
+    """撤销一个目录的授权。"""
+    if not isinstance(body, dict) or not body.get("path"):
+        return 400, {"error": "缺少 path"}
+    path = str(body["path"])
+    roots = [r for r in (core.config.get("allowed_paths", []) or [])
+             if str(r) != path]
+    core.update_config({"allowed_paths": roots})
+    return {"ok": True, "revoked": path,
+            **get_access(core, None, None, None)}
 
 
 # ============================================================ 本地媒体库（v0.5）
@@ -688,6 +789,21 @@ def build_routes() -> Dict[Tuple[str, str], Callable[..., Any]]:
 
         ("POST", "/api/channel/inbound"): post_channel_inbound,
         ("GET", "/api/channel/list"): get_channel_list,
+        # v0.7.0：飞书 / 企业微信事件回调（GET=URL 验证，POST=消息）
+        ("GET", "/api/channel/feishu"): _make_channel_callback("feishu"),
+        ("POST", "/api/channel/feishu"): _make_channel_callback("feishu"),
+        ("GET", "/api/channel/wecom"): _make_channel_callback("wecom"),
+        ("POST", "/api/channel/wecom"): _make_channel_callback("wecom"),
+
+        # ---- v0.7.0：MCP 外部工具生态 ----
+        ("GET", "/api/mcp"): get_mcp,
+        ("POST", "/api/mcp/reload"): post_mcp_reload,
+        ("GET", "/api/mcp/tools"): get_mcp_tools,
+
+        # ---- v0.7.0：真实世界访问权 ----
+        ("GET", "/api/access"): get_access,
+        ("POST", "/api/access/grant"): post_access_grant,
+        ("POST", "/api/access/revoke"): post_access_revoke,
 
         ("GET", "/api/settings"): get_settings,
         ("POST", "/api/settings"): post_settings,

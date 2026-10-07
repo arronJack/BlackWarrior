@@ -1,7 +1,13 @@
 """文件系统工具。
 
-路径规则：相对路径一律解析到沙箱内；绝对路径按策略层判定（写沙箱外需授权）。
-这样 Agent 默认在"自己的地盘"里活动，不会误伤用户文件。
+路径规则（v0.7.0 起"让黑武士住进你的电脑"）：
+
+    相对路径 → 一律解析到沙箱内；
+    绝对路径 → 允许区 = 沙箱 ∪ **授权根目录** ∪（full_fs_access 时整台机器）。
+
+"允许区"里的读写**不需要**危险授权（写沙箱外的旧行为被取消），
+真正越出允许区的写操作仍需 danger 授权。用户用 ``grant_access``
+授权自己的桌面/文档/项目目录，Agent 就能真正读写它们。
 """
 
 from __future__ import annotations
@@ -14,14 +20,12 @@ from ..registry import RISK_CAUTION, RISK_DANGER, RISK_SAFE
 
 
 def _resolve(path: str, ctx: Any) -> Path:
-    """把用户给的路径解析成本地绝对路径。"""
-    p = Path(str(path or "")).expanduser()
-    if not p.is_absolute():
-        joined = ctx.paths.safe_join_sandbox(str(p))
-        if joined is None:
-            raise ValueError(f"非法路径：{path}")
-        return joined
-    return p
+    """把用户给的路径解析成本地绝对路径。
+
+    相对路径 → 沙箱；绝对路径 → 规整并校验不越界（沙箱/授权目录/full_fs）。
+    越界会被 :func:`paths.resolve_path` 抛 ``ValueError``，由注册表转成友好错误。
+    """
+    return ctx.paths.resolve_path(path)
 
 
 def register(reg: Any, ctx: Any) -> None:
@@ -129,8 +133,93 @@ def register(reg: Any, ctx: Any) -> None:
             "in_sandbox": ctx.paths.within_sandbox(p),
         }
 
+    def grant_access(path: str, reason: str = "") -> Dict[str, Any]:
+        """授权我读写某个真实目录（桌面/文档/项目…），让我真正能帮你处理文件。
+
+        参数:
+            path: 要授权的目录绝对路径，如 C:\\Users\\你的用户名\\Desktop
+            reason: 授权理由（会记入记忆，方便日后追溯）
+        """
+        raw = str(path or "").strip().strip('"')
+        if not raw:
+            return {"ok": False, "error": "缺少 path"}
+        try:
+            p = Path(raw).expanduser()
+            if not p.is_absolute():
+                return {"ok": False,
+                        "error": "请给绝对路径（如 C:\\Users\\你\\Desktop）"}
+            p = p.resolve()
+        except Exception as ex:
+            return {"ok": False, "error": f"路径非法：{ex}"}
+        # 指向文件时，授权其所在目录（更符合"授权一个地方"的语义）
+        if p.is_file():
+            p = p.parent
+        if not p.is_dir():
+            try:
+                p.mkdir(parents=True, exist_ok=True)
+            except Exception as ex:
+                return {"ok": False,
+                        "error": f"目录不存在且无法创建：{p}（{ex}）"}
+        roots = list(ctx.config.get("allowed_paths", []) or [])
+        s = str(p)
+        if s in roots:
+            return {"ok": True, "path": s, "already": True,
+                    "allowed_paths": roots}
+        roots.append(s)
+        try:
+            ctx.config.set("allowed_paths", roots)
+            ctx.config.save()
+            ctx.paths.set_allowed_roots(roots)
+        except Exception as ex:
+            return {"ok": False, "error": f"写入配置失败：{ex}"}
+        note = ""
+        if reason:
+            try:
+                ctx.memory.remember(f"授权访问目录 {s}", str(reason))
+                note = "已记入长期记忆"
+            except Exception:
+                pass
+        return {"ok": True, "path": s, "allowed_paths": roots, "note": note}
+
+    def revoke_access(path: str) -> Dict[str, Any]:
+        """撤销某个目录的读写授权。"""
+        raw = str(path or "").strip().strip('"')
+        if not raw:
+            return {"ok": False, "error": "缺少 path"}
+        try:
+            target = str(Path(raw).expanduser().resolve())
+        except Exception:
+            target = raw
+        roots = [r for r in (ctx.config.get("allowed_paths", []) or [])
+                 if str(r).rstrip("\\/") != target.rstrip("\\/")]
+        try:
+            ctx.config.set("allowed_paths", roots)
+            ctx.config.save()
+            ctx.paths.set_allowed_roots(roots)
+        except Exception as ex:
+            return {"ok": False, "error": f"写入配置失败：{ex}"}
+        return {"ok": True, "revoked": target, "allowed_paths": roots}
+
+    def list_workspaces() -> Dict[str, Any]:
+        """列出我现在能读写的所有目录（沙箱 + 你授权的目录）。"""
+        try:
+            return {
+                "ok": True,
+                "sandbox": str(ctx.paths.sandbox_dir()),
+                # 必须转 str：allowed_roots() 给的是 Path 对象，
+                # 直接丢给 json 序列化会炸（ToolResult.text 兜得住，
+                # 但任何 JSON 接口都会 500）。
+                "allowed_paths": [str(p) for p in ctx.paths.allowed_roots()],
+                "full_fs_access": bool(ctx.paths.full_fs_access()),
+                "note": ("full_fs_access=True：我能碰整台机器，请谨慎下达指令"
+                         if ctx.paths.full_fs_access()
+                         else "需要访问新目录时，用 grant_access 授权"),
+            }
+        except Exception as ex:
+            return {"ok": False, "error": f"{type(ex).__name__}: {ex}"}
+
     reg.register("read_file", read_file, risk=RISK_SAFE, category="filesystem",
-                 description="读取文件内容（相对路径解析到沙箱）")
+                 description="读取文件内容（相对路径解析到沙箱；绝对路径需在允许区）")
     reg.register("write_file", write_file, risk=RISK_CAUTION, category="filesystem",
                  description="写入文件，自动创建父目录")
     reg.register("list_dir", list_dir, risk=RISK_SAFE, category="filesystem",
@@ -139,3 +228,13 @@ def register(reg: Any, ctx: Any) -> None:
                  description="查看文件或目录信息")
     reg.register("delete_file", delete_file, risk=RISK_DANGER, category="filesystem",
                  description="删除文件或空目录（危险，需授权）")
+    reg.register("grant_access", grant_access, risk=RISK_CAUTION,
+                 category="filesystem",
+                 description="授权我读写某个真实目录（桌面/文档/项目），"
+                             "让我能真正帮你处理文件")
+    reg.register("revoke_access", revoke_access, risk=RISK_CAUTION,
+                 category="filesystem",
+                 description="撤销某个目录的读写授权")
+    reg.register("list_workspaces", list_workspaces, risk=RISK_SAFE,
+                 category="filesystem",
+                 description="列出我现在能读写的所有目录")

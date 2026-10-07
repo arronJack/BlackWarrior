@@ -21,7 +21,7 @@ from typing import Any, Dict, Iterator, List, Mapping, Optional
 
 from . import paths
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 #: 需要脱敏的关键词（小写匹配键名尾部）。
 SECRET_HINTS = ("key", "token", "secret", "password", "passwd", "credential")
@@ -133,6 +133,23 @@ DEFAULTS: Dict[str, Any] = {
     # list_software 读注册表/包管理器数据库，在个别环境可能较慢；
     # 如不需要可关掉（关掉则工具不注册，模型看不到）。
     "sysinfo_enabled": True,
+
+    # ---- 真实世界访问权（v0.7.0：「让黑武士住进你的电脑」）----
+    # allowed_paths：授权 Agent 读写的**真实目录**（桌面/文档/项目…）。
+    #   里面的读写不需要危险授权；越出这些目录仍受沙箱+授权双重保护。
+    #   可由用户手动填，也可在对话里让黑武士自调用 grant_access 授权。
+    "allowed_paths": [],
+    # full_fs_access：放开整台机器（危险）。仅在完全可信的自用环境开启，
+    #   开启后 shell / 文件工具不再受路径边界限制。
+    "full_fs_access": False,
+
+    # ---- MCP 外部工具生态（v0.7.0）----
+    # 声明要接入的 MCP 服务器，接进来的工具会自动注册成黑武士的工具。
+    #   stdio：{"name":"fs","transport":"stdio","command":["npx","-y",
+    #           "@modelcontextprotocol/server-filesystem","C:\\"]}
+    #   http  ：{"name":"remote","transport":"http","url":"http://127.0.0.1:8931/mcp"}
+    "mcp_enabled": True,
+    "mcp_servers": [],
 }
 
 #: 环境变量映射：环境变量名 -> 配置键。
@@ -239,6 +256,13 @@ class Config:
         if version < 6:
             # v5 -> v6：补齐任务续跑与资源感知配置。
             for k in ("tasks_enabled", "sysinfo_enabled"):
+                out.setdefault(k, DEFAULTS[k])
+        if version < 7:
+            # v6 -> v7：真实世界访问权 + MCP 外部工具生态。
+            # allowed_paths 必须显式给默认值 []，不能继承旧配置的隐式沙箱——
+            # 这里保持空列表，由用户/对话里 grant_access 逐步授权。
+            for k in ("allowed_paths", "full_fs_access",
+                      "mcp_enabled", "mcp_servers"):
                 out.setdefault(k, DEFAULTS[k])
         out["schema_version"] = SCHEMA_VERSION
         return out

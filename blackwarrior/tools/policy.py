@@ -61,15 +61,15 @@ class ToolPolicy:
                 return False, (f"危险工具 {spec.name} 需要显式授权"
                                "（开启 allow_dangerous_tools 或逐次确认）")
 
-        # 4) 路径边界：写类操作不允许逃逸沙箱
+        # 4) 路径边界：写类操作不允许逃逸"允许区"
         path_arg = args.get("path") or args.get("file") or args.get("target")
         if path_arg and cat in ("filesystem", "shell"):
             if spec.risk != RISK_SAFE and not paths.within_sandbox(path_arg):
-                # 允许显式绝对路径写沙箱外，但必须走 danger 授权
+                # 沙箱外 + 授权目录外 + 非 full_fs：必须走 danger 授权
                 if not self._get("allow_dangerous_tools", False):
                     return False, (
-                        f"拒绝写沙箱外的路径：{path_arg}"
-                        "（如需允许，请开启危险工具授权）")
+                        f"拒绝写允许区外的路径：{path_arg}"
+                        "（用 grant_access 授权该目录，或开启危险工具授权）")
 
         # 5) 频率节流
         min_interval = self.MIN_INTERVAL.get(spec.name, 0.0)

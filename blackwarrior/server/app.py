@@ -245,10 +245,15 @@ class _Handler(BaseHTTPRequestHandler):
         fn, params = self._match(method, path)
         if fn is not None:
             try:
-                # 语音上传是原始音频流：绝不能先过 _read_body
-                # （它会把二进制当表单解析，音频直接被搅坏）。
-                is_audio = (method == "POST" and path == "/api/voice/transcribe")
-                body = None if is_audio else (
+                # 这些端点要**原始字节**，绝不能先过 _read_body
+                # （它会把二进制/加密报文当表单解析，签名与密文都会被搅坏）：
+                #   - /api/voice/transcribe：音频流
+                #   - /api/channel/{feishu,wecom}：飞书/企微事件回调（验签要用原文）
+                is_raw = (method == "POST" and (
+                    path == "/api/voice/transcribe"
+                    or path.startswith("/api/channel/feishu")
+                    or path.startswith("/api/channel/wecom")))
+                body = None if is_raw else (
                     self._read_body() if method in ("POST", "PATCH", "PUT") else None)
                 result = fn(self.core, body, params, self)
             except Exception as ex:
@@ -364,6 +369,7 @@ class WarriorServer:
         self._httpd: Optional[ThreadingHTTPServer] = None
         self._thread: Optional[threading.Thread] = None
         self._static_dir = Path(static_dir) if static_dir else STATIC_DIR
+        self._skipped: List[int] = []
 
     # ------- 生命周期 ---------------------------------------------
 
@@ -384,18 +390,55 @@ class WarriorServer:
         Handler.static_dir = static_dir   # type: ignore[attr-defined]
         return Handler
 
+    def _probe_busy(self, port: int, timeout: float = 0.6) -> bool:
+        """探测端口上是否已经有一个**活着的 HTTP 服务**。
+
+        ★ 为什么必须显式探测，而不是只靠 bind 的 OSError：
+          Windows 的 ``SO_REUSEADDR`` 允许**抢占**别人已绑定的端口——bind 会
+          "成功"，但请求全部被先启动的那个进程吃掉。于是新实例看起来启动正常，
+          实际所有 API 都打在旧进程上（用户视角就是"改了没生效"，
+          日志里版本还是旧的，非常难查）。
+          所以这里主动问一句"你在吗"，有人应答就换下一个端口。
+        """
+        try:
+            with socket.create_connection(("127.0.0.1", int(port)),
+                                          timeout=timeout):
+                pass
+        except OSError:
+            return False        # 连不上 → 端口空闲
+        # 能连上就发一个探测请求；能拿到 HTTP 响应头即视为占用
+        try:
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{int(port)}/api/healthz", method="GET")
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                int(resp.status or 0)
+            return True
+        except urllib.error.HTTPError:
+            return True          # 有 HTTP 服务只是路径/状态不对 → 仍算占用
+        except Exception:
+            # 连得上但不是 HTTP（比如别的 TCP 服务）：也算占用，别抢
+            return True
+
     def _bind(self, start_port: int, tries: int = 20) -> int:
         """绑定端口；被占用时自动往后找（Electron 启动时常见）。"""
         port = int(start_port)
+        self._skipped: List[int] = []
         for _ in range(int(tries)):
+            if self._probe_busy(port):
+                self._skipped.append(port)
+                port += 1
+                continue
             try:
                 self._httpd = ThreadingHTTPServer(
                     (self.host, port), self._build_handler_class())
                 self._httpd.daemon_threads = True
                 return port
             except OSError:
+                self._skipped.append(port)
                 port += 1
-        raise RuntimeError(f"无法绑定端口（{start_port} 起 {tries} 个均被占用）")
+        raise RuntimeError(
+            f"无法绑定端口（{start_port} 起 {tries} 个均被占用："
+            f"{self._skipped}）。请先关掉正在运行的黑武士实例。")
 
     def start(self, background: bool = True) -> int:
         """启动服务，返回实际端口。"""
@@ -450,4 +493,6 @@ class WarriorServer:
             "token_required": bool(self.token),
             "static_dir": str(self._static_dir),
             "routes": len(self.routes),
+            # 跳过的端口：有人已在运行（Windows 端口抢占高发区），便于排查
+            "skipped_ports": list(self._skipped),
         }

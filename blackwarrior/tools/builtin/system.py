@@ -3,15 +3,75 @@
 ``set_tick_interval`` 是个有意思的工具：**智能体可以自己改自己的心跳节奏**。
 比如它判断"我在等一个结果"，就把心跳临时调到 10 秒（TTL 到期自动恢复）。
 这是自主性在调度层的体现——节奏不再只是人配的常量。
+
+v0.7.0 新增开机自启（``setup_autostart``）：让黑武士**开机就在**，
+不用人记得点图标——这是"住进电脑里"最字面的一步。
 """
 
 from __future__ import annotations
 
+import os
 import platform
 import time
 from typing import Any, Dict, List
 
 from ..registry import RISK_CAUTION, RISK_SAFE
+
+#: 开机自启脚本文件名（放 Windows 启动文件夹）
+AUTOSTART_NAME = "BlackWarrior_autostart.vbs"
+
+
+def _startup_dir() -> str:
+    """Windows 启动文件夹（登录即执行）。"""
+    appdata = os.environ.get("APPDATA", "")
+    return os.path.join(appdata, "Microsoft", "Windows", "Start Menu",
+                        "Programs", "Startup")
+
+
+def _autostart_path() -> str:
+    return os.path.join(_startup_dir(), AUTOSTART_NAME)
+
+
+def _launch_command() -> Dict[str, Any]:
+    """算出"启动黑武士服务"的命令。
+
+    打包态直接跑 exe；开发态跑 ``python -m blackwarrior serve`` 并锁定
+    工作目录到仓库根，否则 subprocess 找不到包。
+    """
+    import sys
+
+    frozen = bool(getattr(sys, "frozen", False))
+    if frozen:
+        return {"exe": sys.executable, "args": [], "cwd": "",
+                "kind": "packaged"}
+    repo = os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.dirname(os.path.abspath(__file__)))))
+    return {"exe": sys.executable, "args": ["-m", "blackwarrior", "serve"],
+            "cwd": repo, "kind": "source"}
+
+
+def _build_vbs() -> str:
+    """生成启动脚本内容。
+
+    用 .vbs 而不是 .bat/.cmd：bat 会闪一个黑框，vbs 走 WScript.Shell
+    以隐藏窗口启动，体验上才像"常驻后台"而不是"开机弹个命令行"。
+    """
+    from ... import paths as paths_mod
+
+    cmd = _launch_command()
+    exe = cmd["exe"].replace('"', '""')
+    args = " ".join(f'"{a}"' if " " in a else a for a in cmd["args"])
+    line = f'"{exe}" {args}'.rstrip()
+    data_root = str(paths_mod.data_root())
+    vbs = [
+        "' BlackWarrior 开机自启（由黑武士自己生成，删掉即可取消）",
+        "Set sh = CreateObject(\"WScript.Shell\")",
+        f'sh.CurrentDirectory = "{cmd["cwd"] or data_root}"',
+        f'sh.Environment("PROCESS")("BLACKWARRIOR_DATA_ROOT") = "{data_root}"',
+        f'sh.Run """{line}""", 0, False',
+        "",
+    ]
+    return "\r\n".join(vbs)
 
 
 def register(reg: Any, ctx: Any) -> None:
@@ -165,6 +225,57 @@ def register(reg: Any, ctx: Any) -> None:
         return {"ok": False, "app": n,
                 "error": "找不到应用。可改用完整路径（.exe/.lnk），或用 open_url 打开网站"}
 
+    def setup_autostart() -> Dict[str, Any]:
+        """设置开机自启，让我开机就自动在后台运行（不用你记得点图标）。
+
+        装一个隐藏窗口的启动脚本到 Windows 启动文件夹。
+        想取消就说「取消开机自启」，或直接删掉那个脚本。
+        """
+        if os.name != "nt":
+            return {"ok": False,
+                    "error": f"当前系统（{platform.system()}）暂未支持自动配置，"
+                             "请手动把 blackwarrior serve 加入开机项"}
+        path = _autostart_path()
+        try:
+            os.makedirs(_startup_dir(), exist_ok=True)
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                f.write(_build_vbs())
+        except Exception as ex:
+            return {"ok": False, "error": f"写入启动脚本失败：{ex}"}
+        cmd = _launch_command()
+        return {
+            "ok": True,
+            "script": path,
+            "mode": cmd["kind"],
+            "command": " ".join([cmd["exe"], *cmd["args"]]),
+            "note": "下次开机生效；想立刻验证可手动双击该脚本",
+        }
+
+    def cancel_autostart() -> Dict[str, Any]:
+        """取消开机自启。"""
+        path = _autostart_path()
+        try:
+            if os.path.isfile(path):
+                os.remove(path)
+                return {"ok": True, "removed": path}
+            return {"ok": True, "removed": "",
+                    "note": "本来就没有开机自启"}
+        except Exception as ex:
+            return {"ok": False, "error": f"删除启动脚本失败：{ex}"}
+
+    def autostart_status() -> Dict[str, Any]:
+        """查看开机自启状态与当前位置。"""
+        path = _autostart_path()
+        exists = os.path.isfile(path)
+        return {
+            "ok": True,
+            "supported": os.name == "nt",
+            "enabled": exists,
+            "script": path if exists else "",
+            "startup_dir": _startup_dir(),
+            "system": platform.system(),
+        }
+
     reg.register("set_reminder", set_reminder, risk=RISK_CAUTION,
                  category="system", description="设置一个定时提醒")
     reg.register("list_reminders", list_reminders, risk=RISK_SAFE,
@@ -185,3 +296,10 @@ def register(reg: Any, ctx: Any) -> None:
                  description="列出可用工具")
     reg.register("remember_feedback", remember_feedback, risk=RISK_SAFE,
                  category="memory", description="接收反馈以塑形行为")
+    reg.register("setup_autostart", setup_autostart, risk=RISK_CAUTION,
+                 category="system",
+                 description="设置开机自启（开机即在后台运行，不用手动打开）")
+    reg.register("cancel_autostart", cancel_autostart, risk=RISK_CAUTION,
+                 category="system", description="取消开机自启")
+    reg.register("autostart_status", autostart_status, risk=RISK_SAFE,
+                 category="system", description="查看开机自启状态")

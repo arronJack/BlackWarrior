@@ -297,6 +297,8 @@ class ContextAssembler:
 
         启发式：按关键词命中类别。工具少的时候（<12）直接全给，
         因为筛选省下的 token 还不如误伤带来的轮次成本。
+
+        v0.7.0：MCP 类工具无条件放行（用户显式配置的能力不该被启发式筛掉）。
         """
         try:
             all_tools = self.ctx.tools.schemas()
@@ -331,6 +333,13 @@ class ContextAssembler:
         try:
             specs = self.ctx.tools.specs()
             names = {s.name for s in specs if s.category in wanted}
-            return [s.schema() for s in specs if s.name in names]
+            picked = [s for s in specs if s.name in names]
+            # ★ v0.7.0：MCP 工具**永远**放行。
+            #   用户花钱花时间接进来的 MCP 服务器（浏览器/GitHub/数据库…），
+            #   如果还随关键词被筛掉，等于接了等于没接——这正是"58 个工具
+            #   却干不了活"的同类问题，只是换了个地方犯。
+            picked.extend(s for s in specs
+                          if s.category == "mcp" and s.name not in names)
+            return [s.schema() for s in picked]
         except Exception:
             return all_tools

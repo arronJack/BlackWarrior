@@ -55,6 +55,11 @@ class ChannelBridge:
         self._thread: Optional[threading.Thread] = None
         self._poll_thread: Optional[threading.Thread] = None
         self._limiters: Dict[str, Any] = {}   # 渠道名 → 限流器（适配器用）
+        #: 渠道名 → 最近一次消息的发件人 id（v0.7.0）。
+        #: 自建应用（飞书/企微）能私聊，回复必须发给"刚才那个人"，
+        #: 而不是配置文件里写死的固定 receive_id——否则多窗口/群聊场景
+        #: 会把回答发错地方。
+        self._targets: Dict[str, str] = {}
         self._stop = threading.Event()
         self._lock = threading.RLock()
         self._delivered = 0
@@ -90,6 +95,17 @@ class ChannelBridge:
                 "secret": str(c.get("secret") or ""),  # 钉钉加签密钥
                 "poll_url": str(c.get("poll_url") or "").strip(),
                 "poll_interval": max(3.0, min(interval, 600.0)),
+                # v0.7.0：飞书/企微**自建应用**凭据 + 收件人
+                # （app_id 对企微就是 corpid，app_secret 就是 corpsecret）
+                "app_id": str(c.get("app_id") or "").strip(),
+                "app_secret": str(c.get("app_secret") or ""),
+                "receive_id": str(c.get("receive_id") or "").strip(),
+                "receive_id_type": str(c.get("receive_id_type") or "").strip(),
+                # 入站事件订阅校验凭据（飞书 verification_token/encrypt_key）
+                "verification_token": str(c.get("verification_token") or ""),
+                "encrypt_key": str(c.get("encrypt_key") or ""),
+                # 入站走哪个渠道回复（一个回调可能服务多个渠道）
+                "reply_channel": str(c.get("reply_channel") or "").strip(),
             })
         return out
 
@@ -111,10 +127,22 @@ class ChannelBridge:
                 "token_masked": _mask(c["token"]),
                 "has_webhook": bool(c["webhook_url"]),
                 "has_poll": bool(c["poll_url"]),
+                "has_app": bool(c["app_id"] and c["app_secret"]),
+                "receive_id": c["receive_id"],
+                # v0.7.0：入站回调地址（复制到飞书/企微后台即可用）
+                "inbound_endpoint": f"/api/channel/{c['name']}",
+                "can_receive": self._can_receive(c),
             })
         return {"count": len(items), "items": items,
                 "delivered": self._delivered, "failed": self._failed,
                 "pulled": self._pulled, "last_error": self._last_error}
+
+    def _can_receive(self, cfg: Dict[str, Any]) -> bool:
+        """该渠道能否接收外部消息（决定前端是否提示去配事件回调）。"""
+        ctype = str(cfg.get("type") or "")
+        if ctype in ("feishu_app", "wecom_app"):
+            return bool(cfg.get("app_id") and cfg.get("app_secret"))
+        return bool(cfg.get("poll_url"))
 
     # ------------------------------------------------------------- 入站
 
@@ -142,6 +170,17 @@ class ChannelBridge:
             dedupe_key=f"ch:{cfg['name']}:{from_id or ''}:{hash(body) & 0xffffff}")
 
     # ------------------------------------------------------------- 出站
+
+    def set_target(self, name: str, target_id: str) -> None:
+        """记下"这个渠道下一条回复要发给谁"（入站事件里解析出来的发件人）。"""
+        name = str(name or "").strip().lower()
+        if name and target_id:
+            with self._lock:
+                self._targets[name] = str(target_id)
+
+    def get_target(self, name: str) -> str:
+        with self._lock:
+            return self._targets.get(str(name or "").strip().lower(), "")
 
     def start(self) -> None:
         """启动出站转发线程 + 轮询入站线程（幂等）。"""
@@ -259,6 +298,15 @@ class ChannelBridge:
             return
         req_cfg = dict(cfg)
         req_cfg["_turn_id"] = str(p.get("turn_id") or "")
+        # 自建应用渠道：优先回给"刚才发消息的那个人"
+        target = self.get_target(cfg["name"])
+        if target:
+            req_cfg["receive_id"] = target
+            # 飞书 open_id / chat_id 前缀不同，别拿 oc_ 当 open_id 发
+            if target.startswith("oc_"):
+                req_cfg["receive_id_type"] = "chat_id"
+            elif target.startswith("ou_"):
+                req_cfg["receive_id_type"] = "open_id"
         limiters = self._limiters
         ok, err = channel_adapters.deliver(
             req_cfg, text, limiters=limiters,

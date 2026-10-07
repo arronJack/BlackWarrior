@@ -49,6 +49,7 @@ class WarriorCore:
         self.config = config or load_config()
         self.paths = paths_mod                    # 工具层通过 ctx.paths 访问
         self.started_at = time.time()
+        self._sync_access_scope()
 
         # ---- 存储 ----
         self.store = Store()
@@ -102,6 +103,11 @@ class WarriorCore:
         from .runtime.channels import ChannelBridge
         self.channels = ChannelBridge(self)
 
+        # ---- MCP 外部工具生态（v0.7.0）----
+        # 只建管理器（不连接）；连接在 start() 里后台做，避免拖慢启动。
+        from .runtime.mcp_client import MCPManager
+        self.mcp = MCPManager(self.config)
+
         # ---- 主循环 ----
         self.continuum = Continuum(
             run_turn=self._run_turn,
@@ -122,6 +128,24 @@ class WarriorCore:
             self.start()
 
     # ------- v0.3：PASM V2 桥接 -----------------------------------
+
+    def _sync_access_scope(self) -> None:
+        """把配置里的「真实世界访问权」同步给 paths 模块。
+
+        工具层（policy / filesystem）通过 ``paths.within_sandbox`` 判边界，
+        不直接读 config，所以每次配置变更（含 grant_access 工具运行时改配置）
+        都要在这里重新注入一次，否则改了不生效。
+        """
+        try:
+            roots = self.config.get("allowed_paths", []) or []
+            self.paths.set_allowed_roots(list(roots))
+        except Exception:
+            self.paths.set_allowed_roots([])
+        try:
+            self.paths.set_full_fs_access(
+                bool(self.config.get("full_fs_access", False)))
+        except Exception:
+            self.paths.set_full_fs_access(False)
 
     def _build_pasm2(self) -> Any:
         """按配置构建 PASM V2 桥接层。
@@ -183,6 +207,11 @@ class WarriorCore:
             self.channels.start()
         except Exception:
             pass
+        # MCP 服务器连接 + 工具挂载（v0.7.0，后台线程，不阻塞启动）
+        try:
+            self.mcp.start(reg=self.tools, background=True)
+        except Exception:
+            pass
         # 恢复上次遗留的任务（转 paused，不自动继续）
         rec = self.recover_tasks()
         if rec.get("recovered"):
@@ -201,6 +230,11 @@ class WarriorCore:
         """优雅退出：停循环 → 保存认知状态 → 关库。"""
         try:
             self.stop()
+        except Exception:
+            pass
+        # MCP 子进程必须回收，否则重启电脑后残留一堆孤儿 python/node 进程
+        try:
+            self.mcp.stop_all()
         except Exception:
             pass
         try:
@@ -433,6 +467,12 @@ class WarriorCore:
                     "enabled": bool(self.config.get("prefetch_enabled", False)),
                 },
                 "media": self.media.stats(),
+                # v0.7.0：真实世界访问权（让 UI 能显示"我能碰哪些目录"）
+                "access": {
+                    "sandbox": str(self.paths.sandbox_dir()),
+                    "allowed_paths": [str(p) for p in self.paths.allowed_roots()],
+                    "full_fs_access": bool(self.paths.full_fs_access()),
+                },
             }
         except Exception:
             panorama = {}
@@ -507,6 +547,7 @@ class WarriorCore:
             "tasks": tasks_block,
             "channels": (self.channels.stats()
                          if getattr(self, "channels", None) else {}),
+            "mcp": (self.mcp.status() if getattr(self, "mcp", None) else {}),
         }
 
     def summary(self) -> Dict[str, Any]:
@@ -558,6 +599,9 @@ class WarriorCore:
         """更新配置。改模型相关项后需要重建 gateway 才能生效。"""
         self.config.update(patch)
         self.config.save()
+        # 访问权变更必须立刻生效：paths 模块的允许区是工具层的判据
+        if any(k in patch for k in ("allowed_paths", "full_fs_access")):
+            self._sync_access_scope()
         # provider/base_url/key 变动后，网关读的是 config，无需重建；
         # 但工具开关变化需要重新注册工具集。
         if any(k in patch for k in ("shell_enabled", "web_enabled", "tools_enabled")):
@@ -568,6 +612,12 @@ class WarriorCore:
         """按当前配置重建工具集（关闭的能力直接不注册）。"""
         self.tools = ToolRegistry()
         self._registered_tools = register_builtin(self.tools, self, self.config)
+        # MCP 工具不在内置集里，重建后必须重新挂一遍，否则用户改个工具开关
+        # 就会发现"接的 MCP 服务器全没了"。
+        try:
+            self._registered_tools += list(self.mcp.register_all(self.tools))
+        except Exception:
+            pass
         # 工具集变了，V2 安全层白名单必须跟着变——否则新开的工具会被
         # 安全层判成"不在白名单"而全拒，或者已关的工具还在白名单里漏过。
         try:

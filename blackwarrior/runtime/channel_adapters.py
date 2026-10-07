@@ -30,6 +30,23 @@ v0.6.4 新增三种"注册即用"渠道：
    (``https://oapi.dingtalk.com/robot/send?access_token=...``)：
    webhook_url 填完整 webhook；若机器人选了"加签"安全设置，把密钥放
    ``secret`` 字段，自动算 timestamp+HMAC-SHA256 签名；官方限频 20 条/分钟。
+
+v0.7.0 新增三种**双向对话**渠道（能收也能回，不再只是单向推送）：
+
+6. ``feishu_bot`` —— 飞书自定义群机器人
+   (``https://open.feishu.cn/open-apis/bot/v2/hook/<key>``)：webhook_url 填
+   完整 hook 地址即可；JSON ``{"msg_type":"text","content":{"text":...}}``；
+   业务码 ``code==0`` 才算成功。
+7. ``feishu_app`` —— 飞书**自建应用**（能私聊、能收事件）
+   需要 ``app_id`` + ``app_secret``，先用它换 ``tenant_access_token``（带缓存，
+   到期前 60s 自动续），再往 ``im/v1/messages`` 发；``receive_id`` 指定收件人。
+8. ``wecom_app`` —— 企业微信**自建应用**（同上）
+   ``app_id`` 填 corpid、``app_secret`` 填 corpsecret，换 ``access_token`` 后
+   走 ``message/send``；``receive_id`` 留空默认发给 ``@all``。
+
+为什么区分"群机器人"和"自建应用"：群机器人只有一条 webhook、**只能发不能收**；
+自建应用多一步换 token，但既能主动私聊，也能配合事件订阅接收消息——
+想做"微信/飞书里跟黑武士对话"必须用自建应用。
 """
 
 from __future__ import annotations
@@ -51,9 +68,55 @@ WECOM_BYTE_LIMIT = 4000
 WECOM_RATE_PER_MIN = 20
 #: 钉钉自定义机器人官方限频（条/分钟）
 DINGTALK_RATE_PER_MIN = 20
+#: 飞书机器人限频较宽松，但文本体积同样有限，这里保守切段
+FEISHU_BYTE_LIMIT = 4000
+FEISHU_RATE_PER_MIN = 50
 
 SERVERCHAN_SEND_URL = "https://sctapi.ftqq.com/{key}.send"
 PUSHPLUS_SEND_URL = "https://www.pushplus.plus/send"
+FEISHU_TOKEN_URL = ("https://open.feishu.cn/open-apis/auth/v3/"
+                    "tenant_access_token/internal")
+FEISHU_SEND_URL = "https://open.feishu.cn/open-apis/im/v1/messages"
+WECOM_TOKEN_URL = "https://qyapi.weixin.qq.com/cgi-bin/gettoken"
+WECOM_SEND_URL = "https://qyapi.weixin.qq.com/cgi-bin/message/send"
+
+#: access_token 缓存：key → (token, 过期时间戳)。提前 60s 视为过期。
+_TOKEN_CACHE: Dict[str, Tuple[str, float]] = {}
+_TOKEN_LOCK = threading.Lock()
+
+
+def _cached_token(key: str) -> str:
+    with _TOKEN_LOCK:
+        item = _TOKEN_CACHE.get(key)
+        if item and item[1] - 60.0 > time.time():
+            return item[0]
+    return ""
+
+
+def _store_token(key: str, token: str, ttl: float) -> None:
+    with _TOKEN_LOCK:
+        _TOKEN_CACHE[key] = (str(token), time.time() + float(ttl or 7200))
+
+
+def _post_json_auth(url: str, payload: Dict[str, Any], timeout: float,
+                    bearer: str = "") -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """带 Authorization 头的 POST JSON。"""
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    headers = {"Content-Type": "application/json; charset=utf-8"}
+    if bearer:
+        headers["Authorization"] = f"Bearer {bearer}"
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    return _send(req, timeout)
+
+
+def _post_form_auth(url: str, fields: Dict[str, str], timeout: float
+                    ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    data = urllib.parse.urlencode(fields).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST")
+    return _send(req, timeout)
 
 
 def _split_by_bytes(text: str, limit: int) -> List[str]:
@@ -222,6 +285,8 @@ def _deliver_wecom_bot(cfg: Dict[str, Any], text: str, timeout: float,
                        limiter: RateLimiter) -> Tuple[bool, str]:
     """企业微信群机器人。超长切段 + 20 条/分钟限流（超限丢弃并报错）。"""
     url = str(cfg.get("webhook_url") or "")
+    if not url:
+        return False, "wecom_bot 渠道未配置 webhook_url"
     chunks = _split_by_bytes(text, WECOM_BYTE_LIMIT)
     errs: List[str] = []
     sent = 0
@@ -243,6 +308,165 @@ def _deliver_wecom_bot(cfg: Dict[str, Any], text: str, timeout: float,
     return False, "；".join(errs)
 
 
+# ------------------------------------------------------- 飞书 / 企微自建应用
+
+
+def _feishu_token(cfg: Dict[str, Any], timeout: float) -> Tuple[str, str]:
+    """换（或取缓存）飞书 tenant_access_token。返回 (token, 错误)。"""
+    app_id = str(cfg.get("app_id") or "").strip()
+    app_secret = str(cfg.get("app_secret") or "").strip()
+    if not app_id or not app_secret:
+        return "", "feishu_app 需要配置 app_id 与 app_secret"
+    cached = _cached_token(f"feishu:{app_id}")
+    if cached:
+        return cached, ""
+    ok, err, data = _post_form_auth(
+        FEISHU_TOKEN_URL, {"app_id": app_id, "app_secret": app_secret}, timeout)
+    if not ok:
+        return "", f"飞书取 token 失败：{err}"
+    token = str((data or {}).get("tenant_access_token") or "")
+    if not token:
+        msg = (data or {}).get("msg") or (data or {}).get("code")
+        return "", f"飞书业务错误：{msg}"
+    _store_token(f"feishu:{app_id}", token, float((data or {}).get("expire") or 7200))
+    return token, ""
+
+
+def _deliver_feishu_bot(cfg: Dict[str, Any], text: str, timeout: float,
+                        limiter: RateLimiter) -> Tuple[bool, str]:
+    """飞书自定义群机器人（只发不收；想收消息请用 feishu_app + 事件订阅）。"""
+    url = str(cfg.get("webhook_url") or "")
+    if not url:
+        return False, "feishu_bot 渠道未配置 webhook_url（飞书群机器人 hook 地址）"
+    chunks = _split_by_bytes(text, FEISHU_BYTE_LIMIT)
+    errs: List[str] = []
+    sent = 0
+    for i, chunk in enumerate(chunks):
+        if not limiter.acquire():
+            errs.append(f"限流丢弃 {len(chunks) - i} 片")
+            break
+        ok, err, data = _post_json(url, {
+            "msg_type": "text",
+            "content": {"text": chunk},
+        }, timeout)
+        if ok and isinstance(data, dict) and data.get("code") not in (0, None):
+            errs.append(f"第 {i + 1} 片失败：飞书业务错误 {data.get('msg') or data.get('code')}")
+        elif ok:
+            sent += 1
+        else:
+            errs.append(f"第 {i + 1} 片失败：{err}")
+    if not errs:
+        return True, "" if sent <= 1 else f"（{sent} 片）"
+    return False, "；".join(errs)
+
+
+def _deliver_feishu_app(cfg: Dict[str, Any], text: str, timeout: float,
+                        limiter: RateLimiter) -> Tuple[bool, str]:
+    """飞书自建应用：换 tenant_access_token → im/v1/messages 私聊/群发。"""
+    receive_id = str(cfg.get("receive_id") or "").strip()
+    if not receive_id:
+        return False, "feishu_app 需要配置 receive_id（open_id / user_id / chat_id）"
+    token, err = _feishu_token(cfg, timeout)
+    if not token:
+        return False, err
+    chunks = _split_by_bytes(text, FEISHU_BYTE_LIMIT)
+    errs: List[str] = []
+    sent = 0
+    for i, chunk in enumerate(chunks):
+        if not limiter.acquire():
+            errs.append(f"限流丢弃 {len(chunks) - i} 片")
+            break
+        # 飞书 content 字段是**字符串化**的 JSON，不是嵌套对象——这是最容易踩的坑
+        ok, err2, data = _post_json_auth(
+            f"{FEISHU_SEND_URL}?receive_id_type="
+            f"{_feishu_id_type(cfg, receive_id)}",
+            {"receive_id": receive_id, "msg_type": "text",
+             "content": json.dumps({"text": chunk}, ensure_ascii=False)},
+            timeout, bearer=token)
+        if ok and isinstance(data, dict) and data.get("code") not in (0, None):
+            # token 过期是最常见原因：清缓存重试一次，别让用户手动重启
+            if data.get("code") in (99991663, 99991668, 401):
+                with _TOKEN_LOCK:
+                    _TOKEN_CACHE.pop(f"feishu:{cfg.get('app_id')}", None)
+                token2, err3 = _feishu_token(cfg, timeout)
+                if token2:
+                    ok, err2, data = _post_json_auth(
+                        f"{FEISHU_SEND_URL}?receive_id_type="
+                        f"{_feishu_id_type(cfg, receive_id)}",
+                        {"receive_id": receive_id, "msg_type": "text",
+                         "content": json.dumps({"text": chunk},
+                                               ensure_ascii=False)},
+                        timeout, bearer=token2)
+        if ok and isinstance(data, dict) and data.get("code") not in (0, None):
+            errs.append(f"第 {i + 1} 片失败：{data.get('msg') or data.get('code')}")
+        elif ok:
+            sent += 1
+        else:
+            errs.append(f"第 {i + 1} 片失败：{err2}")
+    if not errs:
+        return True, "" if sent <= 1 else f"（{sent} 片）"
+    return False, "；".join(errs)
+
+
+def _feishu_id_type(cfg: Dict[str, Any], receive_id: str) -> str:
+    """推断 receive_id_type。显式配置优先，否则按前缀猜（oc_ 开头=群聊）。"""
+    explicit = str(cfg.get("receive_id_type") or "").strip()
+    if explicit:
+        return explicit
+    if receive_id.startswith("oc_"):
+        return "chat_id"
+    if receive_id.startswith("ou_"):
+        return "open_id"
+    if receive_id.startswith("on_"):
+        return "union_id"
+    return "user_id"
+
+
+def _deliver_wecom_app(cfg: Dict[str, Any], text: str, timeout: float,
+                       limiter: RateLimiter) -> Tuple[bool, str]:
+    """企业微信自建应用：换 access_token → message/send（默认 @all）。"""
+    corpid = str(cfg.get("app_id") or "").strip()      # 企微用 corpid
+    corpsecret = str(cfg.get("app_secret") or "").strip()
+    if not corpid or not corpsecret:
+        return False, "wecom_app 需要配置 app_id（corpid）与 app_secret（corpsecret）"
+    touser = str(cfg.get("receive_id") or "@all").strip() or "@all"
+    cached = _cached_token(f"wecom:{corpid}")
+    if not cached:
+        url = f"{WECOM_TOKEN_URL}?{urllib.parse.urlencode({'corpid': corpid, 'corpsecret': corpsecret})}"
+        ok, err, data = _send(urllib.request.Request(url, method="GET"), timeout)
+        if not ok:
+            return False, f"企微取 token 失败：{err}"
+        cached = str((data or {}).get("access_token") or "")
+        if not cached:
+            return False, f"企微业务错误：{(data or {}).get('errmsg')}"
+        _store_token(f"wecom:{corpid}", cached,
+                     float((data or {}).get("expires_in") or 7200))
+    chunks = _split_by_bytes(text, WECOM_BYTE_LIMIT)
+    errs: List[str] = []
+    sent = 0
+    for i, chunk in enumerate(chunks):
+        if not limiter.acquire():
+            errs.append(f"限流丢弃 {len(chunks) - i} 片（20 条/分钟）")
+            break
+        ok, err, data = _post_json_auth(
+            f"{WECOM_SEND_URL}?access_token={urllib.parse.quote(cached)}",
+            {"touser": touser, "msgtype": "text",
+             "text": {"content": chunk}}, timeout)
+        if ok and isinstance(data, dict) and data.get("errcode") not in (0, None):
+            if data.get("errcode") in (40014, 42001):     # token 过期
+                with _TOKEN_LOCK:
+                    _TOKEN_CACHE.pop(f"wecom:{corpid}", None)
+                return False, "企微 access_token 已失效，请重新触发一次以刷新"
+            errs.append(f"第 {i + 1} 片失败：{data.get('errmsg') or data.get('errcode')}")
+        elif ok:
+            sent += 1
+        else:
+            errs.append(f"第 {i + 1} 片失败：{err}")
+    if not errs:
+        return True, "" if sent <= 1 else f"（{sent} 片）"
+    return False, "；".join(errs)
+
+
 #: 分发表：type → 投递函数
 DELIVERERS = {
     "webhook": _deliver_webhook,
@@ -250,11 +474,17 @@ DELIVERERS = {
     "serverchan": _deliver_serverchan,
     "pushplus": _deliver_pushplus,
     "dingtalk_bot": _deliver_dingtalk_bot,
+    "feishu_bot": _deliver_feishu_bot,
+    "feishu_app": _deliver_feishu_app,
+    "wecom_app": _deliver_wecom_app,
 }
 
 #: 需要滑动窗口限流的类型（各自官方 20 条/分钟）
 _RATE_LIMITED = {"wecom_bot": WECOM_RATE_PER_MIN,
-                 "dingtalk_bot": DINGTALK_RATE_PER_MIN}
+                 "dingtalk_bot": DINGTALK_RATE_PER_MIN,
+                 "feishu_bot": FEISHU_RATE_PER_MIN,
+                 "feishu_app": FEISHU_RATE_PER_MIN,
+                 "wecom_app": WECOM_RATE_PER_MIN}
 
 
 def deliver(cfg: Dict[str, Any], text: str, *,
@@ -402,6 +632,123 @@ def selftest() -> bool:
         check(not ok and "未知渠道类型" in err, "未知类型应拒绝")
     finally:
         srv.shutdown()
+
+    # ---- 4) v0.7.0 飞书 / 企微自建应用（本地假服务器验证报文与 token 缓存）
+    token_hits = {"feishu": 0, "wecom": 0}
+    app_got: List[Dict[str, Any]] = []
+
+    class _H2(http.server.BaseHTTPRequestHandler):
+        def _reply(self, obj):
+            body = json.dumps(obj).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_POST(self):
+            n = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(n) or b"{}"
+            if self.path.startswith("/feishu/token"):
+                token_hits["feishu"] += 1
+                self._reply({"code": 0, "expire": 7200,
+                             "tenant_access_token": "t-fs-1"})
+            elif self.path.startswith("/feishu/send"):
+                app_got.append({"kind": "feishu", "path": self.path,
+                                "auth": self.headers.get("Authorization", ""),
+                                "body": json.loads(raw)})
+                self._reply({"code": 0})
+            elif self.path.startswith("/wecom/token"):
+                token_hits["wecom"] += 1
+                self._reply({"errcode": 0, "access_token": "t-wc-1",
+                             "expires_in": 7200})
+            elif self.path.startswith("/wecom/send"):
+                app_got.append({"kind": "wecom", "body": json.loads(raw)})
+                self._reply({"errcode": 0})
+            else:
+                app_got.append({"kind": "bot", "path": self.path,
+                                "body": json.loads(raw)})
+                self._reply({"code": 0, "errcode": 0})
+
+        def do_GET(self):
+            # 企微取 token 走 GET（带 corpid/corpsecret 查询参数）
+            token_hits["wecom"] += 1
+            self._reply({"errcode": 0, "access_token": "t-wc-1",
+                         "expires_in": 7200})
+
+        def log_message(self, *a):
+            pass
+
+    srv2 = http.server.HTTPServer(("127.0.0.1", 0), _H2)
+    port2 = srv2.server_address[1]
+    threading.Thread(target=srv2.serve_forever, daemon=True).start()
+    old = (FEISHU_TOKEN_URL, FEISHU_SEND_URL, WECOM_TOKEN_URL, WECOM_SEND_URL)
+    try:
+        # 把四个常量指向本地假服务器（模块级常量，deliver 内部直接引用）
+        globals()["FEISHU_TOKEN_URL"] = f"http://127.0.0.1:{port2}/feishu/token"
+        globals()["FEISHU_SEND_URL"] = f"http://127.0.0.1:{port2}/feishu/send"
+        globals()["WECOM_TOKEN_URL"] = f"http://127.0.0.1:{port2}/wecom/token"
+        globals()["WECOM_SEND_URL"] = f"http://127.0.0.1:{port2}/wecom/send"
+        with _TOKEN_LOCK:
+            _TOKEN_CACHE.clear()
+
+        # feishu_bot：群机器人只要 hook 地址
+        ok, err = deliver({"name": "fsbot", "type": "feishu_bot",
+                           "webhook_url": f"http://127.0.0.1:{port2}/fs/hook"},
+                          "飞书群消息")
+        check(ok, f"feishu_bot 投递失败：{err}")
+        last = app_got[-1]
+        check(last["body"]["msg_type"] == "text"
+              and last["body"]["content"]["text"] == "飞书群消息",
+              f"feishu_bot 报文：{last['body']}")
+
+        # feishu_app：换 token → 发消息，且 content 必须是**字符串化 JSON**
+        ok, err = deliver({"name": "fsapp", "type": "feishu_app",
+                           "app_id": "cli_x", "app_secret": "s",
+                           "receive_id": "ou_abc"}, "飞书私聊")
+        check(ok, f"feishu_app 投递失败：{err}")
+        fs_msg = [g for g in app_got if g["kind"] == "feishu"][-1]
+        check(fs_msg["auth"] == "Bearer t-fs-1", f"应带 token：{fs_msg['auth']}")
+        check(isinstance(fs_msg["body"]["content"], str),
+              "飞书 content 必须是字符串化 JSON")
+        check(json.loads(fs_msg["body"]["content"])["text"] == "飞书私聊",
+              f"content 内层：{fs_msg['body']['content']}")
+        check("receive_id_type=open_id" in fs_msg["path"],
+              f"ou_ 前缀应推断 open_id：{fs_msg['path']}")
+        # 第二次调用应命中 token 缓存（不再取 token）
+        hits = token_hits["feishu"]
+        deliver({"name": "fsapp", "type": "feishu_app", "app_id": "cli_x",
+                 "app_secret": "s", "receive_id": "ou_abc"}, "再来一条")
+        check(token_hits["feishu"] == hits, "token 应被缓存，不重复换取")
+
+        # wecom_app：默认发给 @all
+        ok, err = deliver({"name": "wcapp", "type": "wecom_app",
+                           "app_id": "corp1", "app_secret": "sec",
+                           "receive_id": ""}, "企微消息")
+        check(ok, f"wecom_app 投递失败：{err}")
+        wc = [g for g in app_got if g["kind"] == "wecom"][-1]
+        check(wc["body"]["touser"] == "@all"
+              and wc["body"]["text"]["content"] == "企微消息",
+              f"wecom_app 报文：{wc['body']}")
+        check(token_hits["wecom"] >= 1, "企微应取过 token")
+
+        # 缺凭据时如实报错，不静默成功
+        ok, err = deliver({"name": "fsbad", "type": "feishu_app",
+                           "app_id": "cli_x", "receive_id": "ou_1"}, "x")
+        check(not ok and "app_secret" in err, f"缺凭据应报错：{err}")
+        ok, err = deliver({"name": "fsbad2", "type": "feishu_app",
+                           "app_id": "cli_x", "app_secret": "s"}, "x")
+        check(not ok and "receive_id" in err, f"缺收件人应报错：{err}")
+        ok, err = deliver({"name": "wcbad", "type": "wecom_app"}, "x")
+        check(not ok and "app_id" in err, f"企微缺 corpid 应报错：{err}")
+    finally:
+        globals()["FEISHU_TOKEN_URL"] = old[0]
+        globals()["FEISHU_SEND_URL"] = old[1]
+        globals()["WECOM_TOKEN_URL"] = old[2]
+        globals()["WECOM_SEND_URL"] = old[3]
+        with _TOKEN_LOCK:
+            _TOKEN_CACHE.clear()
+        srv2.shutdown()
     return True
 
 
