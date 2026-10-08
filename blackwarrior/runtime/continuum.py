@@ -156,10 +156,20 @@ class Continuum:
              from_id: str = "local", channel: str = "ui",
              meta: Optional[Dict[str, Any]] = None,
              dedupe_key: str = "") -> Optional[Message]:
-        """入队一条消息，并按需抢占当前回合。"""
+        """入队一条消息，并按需抢占当前回合。
+
+        ★ 生成并携带回合 id（``turn_id``）：让 POST ``/api/message`` 返回的
+        ``message.turn_id`` 与内核后续 SSE 事件（``reply_delta`` / ``reply`` /
+        ``turn_end``）的 ``turn_id`` **同源**。前端正是靠这个 id 把流式回复
+        正确挂回对应的气泡——此前 ``push`` 不写 ``turn_id``（默认空串），
+        而 ``TurnRunner`` 内部另生成 ``t{毫秒}`` 的 id 发到 SSE，两者永远对不上，
+        前端匹配失败 → 气泡停在空、只能等 15s 兜底，表现就是「对话是空回复」。
+        """
+        turn_id = f"t{int(time.time() * 1000)}"
         msg = self.queue.push(
             text, priority=priority, lane=lane, from_id=from_id,
             channel=channel, meta=meta, dedupe_key=dedupe_key,
+            turn_id=turn_id,
         )
         if msg is None:
             return None  # 被去重

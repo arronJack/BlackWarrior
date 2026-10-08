@@ -84,7 +84,13 @@ class TurnRunner:
     def run(self, text: str, label: str = "", msg: Optional[Message] = None,
             abort: Optional[Event] = None) -> TurnResult:
         ctx = self.ctx
-        turn_id = f"t{int(time.time() * 1000)}"
+        # ★ 回合 id 优先用消息携带的（与 POST /api/message 返回同源），
+        #   保证前端 SSE 流式回复（reply_delta/reply/turn_end）能精确匹配气泡；
+        #   没有则兜底用时间戳（自主 TICK / 后台消息 msg=None 时）。
+        if msg is not None and getattr(msg, "turn_id", ""):
+            turn_id = str(msg.turn_id)
+        else:
+            turn_id = f"t{int(time.time() * 1000)}"
         is_auto = (label == AUTO_TICK_LABEL
                    or text.startswith(AUTO_TICK_PREFIX))
 
