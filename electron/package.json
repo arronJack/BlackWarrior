@@ -1,7 +1,7 @@
 {
   "name": "blackwarrior-desktop",
   "productName": "BlackWarrior",
-  "version": "0.8.7",
+  "version": "0.8.12",
   "description": "黑武士 —— 带真实认知内核的桌面 AI Agent（Electron 壳 + Python PASM 内核）",
   "main": "main.cjs",
   "author": "arronzheng",
@@ -67,7 +67,8 @@
       "createDesktopShortcut": true,
       "shortcutName": "黑武士",
       "installerIcon": "assets/icon.ico",
-      "uninstallerIcon": "assets/icon.ico"
+      "uninstallerIcon": "assets/icon.ico",
+      "include": "installer.nsh"
     },
     "mac": {
       "target": [
