@@ -324,6 +324,17 @@
           <div class="kv" data-page-node-id="xvh0PGpFHuLjzDg6aJdsq3"><span data-page-node-id="qUg79SIOcgF7tM5Bc6GRCf">识别引擎</span><b id="asrState" data-page-node-id="0se54vBEkINYAVzWlQGC8Q">—</b></div>
           <div class="kv" data-page-node-id="LkUubYPjeutglmDyLTpXVU"><span data-page-node-id="NvS4E2wYp9hhiFU9eOb41y">朗读引擎</span><b id="ttsState" data-page-node-id="MZvfXZghWjSeopbisJcJxB">—</b></div>
         </div>
+
+        <div class="panel span2" data-page-node-id="bwChPanel">
+          <div class="panel-h" data-page-node-id="bwChH">渠道接入（飞书 / 企业微信）<small data-page-node-id="bwChSub">配置后，把对应回调地址填进飞书/企微后台即可接收消息</small></div>
+          <p class="hint" data-page-node-id="bwChHint">飞书/企业微信自建应用的「渠道名」固定为 <code>feishu</code> / <code>wecom</code>（回调路由写死，乱改名事件收不到）。密钥只存本机 config.json，界面回显脱敏；已保存的密钥留空即表示不改。</p>
+          <div id="channelList" data-page-node-id="bwChList"></div>
+          <div class="ch-actions" data-page-node-id="bwChActions">
+            <button class="ghostbtn" id="btnAddChannel" data-page-node-id="bwChAdd">+ 新增渠道</button>
+            <button class="ghostbtn warn" id="btnSaveChannels" data-page-node-id="bwChSave">保存渠道</button>
+          </div>
+        </div>
+
       </div>
     </section>
 

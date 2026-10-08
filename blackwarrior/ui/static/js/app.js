@@ -18,6 +18,7 @@
     activated: false,
     status: null,
     settings: null,
+    channels: [],
     cog: null,
     memories: [],
     pending: null,      // {turn_id, el, text, resolve}
@@ -813,6 +814,8 @@
   // ============================================================ 设置页
   function bindSettings() {
     $('btnSave').addEventListener('click', saveSettings);
+    $('btnAddChannel').addEventListener('click', addChannel);
+    $('btnSaveChannels').addEventListener('click', saveChannels);
     const pingBtn = $('btnPing');
     if (pingBtn) {
       pingBtn.addEventListener('click', function () {
@@ -914,6 +917,10 @@
 
       $('setUrl').textContent = location.origin;
       $('setDataDir').textContent = (S.status && S.status.data_dir) || '—';
+      // 渠道接入：从脱敏后的配置载入（密钥字段留空 = 不改）
+      S.channels = Array.isArray(cfg.channels)
+        ? cfg.channels.map(c => Object.assign({}, c)) : [];
+      renderChannels();
       paintSpeechState();
     }).catch(() => {});
   }
@@ -953,6 +960,152 @@
       toast('已保存（心跳/内核类改动重启内核后生效）');
       refresh();
     }).catch(e => toast(e.message, true));
+  }
+
+  // ============================================================ 渠道接入面板
+
+  // 渠道类型 → 展示名 + 默认回调名（自建应用类型回调路由写死 feishu/wecom）
+  const CH_TYPES = [
+    { v: 'feishu_app', t: '飞书·自建应用', fixed: 'feishu' },
+    { v: 'wecom_app', t: '企业微信·自建应用', fixed: 'wecom' },
+    { v: 'webhook', t: 'Webhook 出站（群机器人/通用）', fixed: '' },
+    { v: 'wecom_bot', t: '企业微信群机器人', fixed: '' },
+    { v: 'poll', t: '轮询入站（内网中转/聚合器）', fixed: '' }
+  ];
+
+  function chTypeLabel(v) {
+    const m = CH_TYPES.find(x => x.v === v);
+    return m ? m.t : v;
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
+        '>': '&gt;', '"': '&quot;' }[c]));
+  }
+
+  function field(label, control) {
+    return '<label class="field"><span>' + label + '</span>' + control + '</label>';
+  }
+
+  function renderChannels() {
+    const box = $('channelList');
+    if (!box) { return; }
+    box.innerHTML = '';
+    if (!S.channels.length) {
+      box.innerHTML = '<p class="hint">尚未配置任何渠道。点「+ 新增渠道」开始接入飞书或企业微信。</p>';
+      return;
+    }
+    S.channels.forEach((ch, idx) => {
+      const typeMeta = CH_TYPES.find(x => x.v === (ch.type || 'webhook')) || CH_TYPES[2];
+      const lockedName = !!typeMeta.fixed;
+      const endpoint = '/api/channel/' + (lockedName ? typeMeta.fixed : (ch.name || ''));
+      const card = document.createElement('div');
+      card.className = 'ch-card';
+      card.innerHTML =
+        '<div class="ch-card-h">' +
+          '<select class="ch-type" data-idx="' + idx + '">' +
+            CH_TYPES.map(o => '<option value="' + o.v + '"' +
+              (o.v === (ch.type || 'webhook') ? ' selected' : '') + '>' + o.t + '</option>').join('') +
+          '</select>' +
+          '<button class="ch-del" data-idx="' + idx + '" title="删除该渠道">✕</button>' +
+        '</div>' +
+        '<div class="ch-grid">' +
+          field('渠道名', '<input class="ch-name" data-idx="' + idx + '" value="' +
+            esc(lockedName ? typeMeta.fixed : (ch.name || '')) + '"' +
+            (lockedName ? ' readonly' : '') + ' placeholder="feishu / wecom / 自定义" />') +
+          field('App ID / Corp ID', '<input class="ch-appid" data-idx="' + idx + '" value="' +
+            esc(ch.app_id || '') + '" placeholder="飞书 app_id 或企微 corpid" />') +
+          field('App Secret / Corp Secret', '<input class="ch-secret" type="password" data-idx="' +
+            idx + '" placeholder="已保存·留空不改" />') +
+          field('事件校验 Token', '<input class="ch-vtoken" type="password" data-idx="' +
+            idx + '" placeholder="飞书 verification_token·留空不改" />') +
+          field('事件加密 Key', '<input class="ch-ekey" type="password" data-idx="' +
+            idx + '" placeholder="飞书 encrypt_key·留空不改" />') +
+          field('Webhook 地址', '<input class="ch-webhook" data-idx="' + idx + '" value="' +
+            esc(ch.webhook_url || '') + '" placeholder="https://…（出站回复投递地址）" />') +
+          field('回复收件人 ID', '<input class="ch-rid" data-idx="' + idx + '" value="' +
+            esc(ch.receive_id || '') + '" placeholder="open_id / chat_id / userid" />') +
+          field('收件人类型', '<input class="ch-ridtype" data-idx="' + idx + '" value="' +
+            esc(ch.receive_id_type || '') + '" placeholder="open_id / chat_id / userid" />') +
+        '</div>' +
+        '<div class="ch-meta">' +
+          '<label class="switch"><input type="checkbox" class="ch-enabled" data-idx="' + idx + '"' +
+            ((ch.enabled !== false) ? ' checked' : '') + ' /><span>启用此渠道</span></label>' +
+          '<code class="ch-ep">回调地址：' + esc(endpoint) + '</code>' +
+        '</div>';
+      box.appendChild(card);
+    });
+    // ---- 绑定交互
+    box.querySelectorAll('.ch-type').forEach(el => {
+      el.addEventListener('change', function () {
+        S.channels[+this.getAttribute('data-idx')].type = this.value;
+        renderChannels();   // 重新渲染以锁定/解锁渠道名
+      });
+    });
+    const bind = (sel, key) => box.querySelectorAll(sel).forEach(el => {
+      el.addEventListener(el.tagName === 'INPUT' && el.type === 'checkbox'
+        ? 'change' : 'input', function () {
+        const i = +this.getAttribute('data-idx');
+        S.channels[i][key] = (this.type === 'checkbox') ? this.checked
+          : (key === 'name' ? this.value.trim().toLowerCase() : this.value.trim());
+      });
+    });
+    bind('.ch-name', 'name');
+    bind('.ch-appid', 'app_id');
+    bind('.ch-secret', 'app_secret');
+    bind('.ch-vtoken', 'verification_token');
+    bind('.ch-ekey', 'encrypt_key');
+    bind('.ch-webhook', 'webhook_url');
+    bind('.ch-rid', 'receive_id');
+    bind('.ch-ridtype', 'receive_id_type');
+    bind('.ch-enabled', 'enabled');
+    box.querySelectorAll('.ch-del').forEach(el => {
+      el.addEventListener('click', function () {
+        S.channels.splice(+this.getAttribute('data-idx'), 1);
+        renderChannels();
+      });
+    });
+  }
+
+  function addChannel() {
+    S.channels.push({ type: 'feishu_app', name: 'feishu', app_id: '',
+      app_secret: '', verification_token: '', encrypt_key: '',
+      webhook_url: '', receive_id: '', receive_id_type: '', enabled: true });
+    renderChannels();
+  }
+
+  function saveChannels() {
+    for (let i = 0; i < S.channels.length; i++) {
+      const ch = S.channels[i];
+      if (ch.type === 'feishu_app' || ch.type === 'wecom_app') {
+        if (!(ch.app_id || '').trim() && !(ch.app_secret || '').trim()) {
+          toast('第 ' + (i + 1) + ' 个渠道（' + chTypeLabel(ch.type) +
+            '）至少需填 App ID 或 App Secret 之一', true);
+          return;
+        }
+      }
+    }
+    const btn = $('btnSaveChannels');
+    if (btn) { btn.disabled = true; btn.textContent = '保存中…'; }
+    api.saveChannels(S.channels).then(r => {
+      if (btn) { btn.disabled = false; btn.textContent = '保存渠道'; }
+      if (r && typeof r.count === 'number') {
+        toast('已保存渠道（共 ' + r.count + ' 个）');
+        // 密钥已落盘，界面清空避免持有；其余字段保留以便再次编辑
+        S.channels.forEach(ch => {
+          ch.app_secret = ''; ch.verification_token = '';
+          ch.encrypt_key = ''; ch.token = ''; ch.secret = '';
+        });
+        renderChannels();
+        refresh();
+      } else {
+        toast('保存失败：' + ((r && r.error) || '未知'), true);
+      }
+    }).catch(e => {
+      if (btn) { btn.disabled = false; btn.textContent = '保存渠道'; }
+      toast(e.message, true);
+    });
   }
 
   // ============================================================ 激活

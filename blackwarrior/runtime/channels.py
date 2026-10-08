@@ -137,6 +137,70 @@ class ChannelBridge:
                 "delivered": self._delivered, "failed": self._failed,
                 "pulled": self._pulled, "last_error": self._last_error}
 
+    # ------------------------------------------------------------- 配置写入
+
+    #: 密钥类字段（界面拿不到真值，留空 = 保留原值，避免脱敏串覆盖真密钥）
+    _SECRET_FIELDS = ("app_secret", "token", "encrypt_key",
+                      "verification_token", "secret", "api_key")
+    #: 允许的渠道类型
+    _TYPES = ("webhook", "wecom_bot", "feishu_app", "wecom_app", "poll")
+
+    def save_channels(self, incoming: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """保存整份渠道列表（设置页「渠道接入」面板调用）。
+
+        设计要点（2026-10-08）：
+        - 配置驱动、零硬编码：新增 / 修改 / 删除都走这一个接口；
+        - **密钥保护**：界面经 public_config 拿不到真密钥（已脱敏），
+          因此前端对"没改动的密钥字段"传空串。空串 / 纯空白 / 脱敏占位
+          （含 ``****``）一律视为"保留原值"，从当前 config 取回，绝不拿
+          脱敏串覆盖真密钥（否则一保存就把密钥洗掉）；
+        - **回调路由约束**：飞书 / 企微**自建应用**的入站回调在 routes 里
+          硬编码成 ``/api/channel/feishu`` 与 ``/api/channel/wecom``，所以
+          这两类渠道的 name 必须分别是 ``feishu`` / ``wecom``，否则事件
+          回调 404。这里对这两类类型强制对齐 name，前端也锁死不可改。
+        """
+        if not isinstance(incoming, list):
+            raise ValueError("channels 必须是数组")
+        existing = {c["name"]: c for c in self._channels()}
+        out: List[Dict[str, Any]] = []
+        for ch in incoming:
+            if not isinstance(ch, dict):
+                continue
+            name = str(ch.get("name") or "").strip().lower()
+            ctype = str(ch.get("type") or "webhook").strip().lower()
+            # 自建应用类型强制对齐回调路由所需的 name
+            if ctype == "feishu_app":
+                name = "feishu"
+            elif ctype == "wecom_app":
+                name = "wecom"
+            if ctype not in self._TYPES:
+                ctype = "webhook"
+            if not _NAME_RE.match(name):
+                # 非法名直接跳过，避免被当路径用
+                continue
+            prev = existing.get(name, {})
+            rec: Dict[str, Any] = {}
+            for k, v in ch.items():
+                if k in self._SECRET_FIELDS:
+                    sval = "" if v is None else str(v)
+                    if sval.strip() == "" or "****" in sval:
+                        rec[k] = prev.get(k, "")  # 保留原密钥
+                    else:
+                        rec[k] = sval
+                else:
+                    rec[k] = v
+            rec["name"] = name
+            rec["type"] = ctype
+            out.append(rec)
+        # 去重（同一 name 只留最后一条）
+        seen: Dict[str, Dict[str, Any]] = {}
+        for rec in out:
+            seen[rec["name"]] = rec
+        final = list(seen.values())
+        self._core.config.update({"channels": final})
+        self._core.config.save()
+        return self.list_channels()
+
     def _can_receive(self, cfg: Dict[str, Any]) -> bool:
         """该渠道能否接收外部消息（决定前端是否提示去配事件回调）。"""
         ctype = str(cfg.get("type") or "")

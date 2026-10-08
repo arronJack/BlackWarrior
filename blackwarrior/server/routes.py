@@ -627,6 +627,21 @@ def get_channel_list(core, body, params, handler):
     return core.channels.list_channels()
 
 
+def post_channels(core, body, params, handler):
+    """保存渠道列表（设置页「渠道接入」面板）。
+
+    仅接受 ``{"channels": [...]}``；密钥保护 / 回调名对齐等规则在
+    :meth:`ChannelBridge.save_channels` 里统一处理，这里只做收口。
+    """
+    if not isinstance(body, dict):
+        return 400, {"error": "需要 JSON 对象"}
+    try:
+        result = core.channels.save_channels(body.get("channels", []))
+    except ValueError as e:
+        return 400, {"error": str(e)}
+    return result
+
+
 def _make_channel_callback(kind: str):
     """生成飞书/企微事件回调端点。
 
@@ -970,6 +985,9 @@ def build_routes() -> Dict[Tuple[str, str], Callable[..., Any]]:
 
         ("POST", "/api/channel/inbound"): post_channel_inbound,
         ("GET", "/api/channel/list"): get_channel_list,
+        # v0.8.x：设置页「渠道接入」面板（读取清单 / 保存整份列表）
+        ("GET", "/api/channels"): get_channel_list,
+        ("POST", "/api/channels"): post_channels,
         # v0.7.0：飞书 / 企业微信事件回调（GET=URL 验证，POST=消息）
         ("GET", "/api/channel/feishu"): _make_channel_callback("feishu"),
         ("POST", "/api/channel/feishu"): _make_channel_callback("feishu"),

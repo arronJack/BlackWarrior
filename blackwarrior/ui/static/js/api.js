@@ -125,6 +125,8 @@
     // ---- 设置
     settings: ()          => api.get('/api/settings'),
     save:     (patch)     => api.post('/api/settings', patch),
+    channels: ()          => api.get('/api/channels'),
+    saveChannels: (list)  => api.post('/api/channels', {channels: list}),
     providers:()          => api.get('/api/providers'),
     activate: (p)         => api.post('/api/activate', p),
     ping:     ()          => api.post('/api/llm/ping'),
